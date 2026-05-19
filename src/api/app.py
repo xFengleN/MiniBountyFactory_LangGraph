@@ -400,16 +400,6 @@ def serve_web_ui():
                                     </div>
                                 </div>
                             </div>
-
-                            <div>
-                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-flask mr-1"></i> Test Mode</h4>
-                                <div class="flex items-center gap-3 bg-gray-900 p-3 rounded">
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" id="cfgTestMode" class="accent-purple-500 w-4 h-4">
-                                        <span class="text-sm">Enable test mode (free tasks only)</span>
-                                    </label>
-                                </div>
-                            </div>
                         </div>
 
                         <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-700">
@@ -429,27 +419,27 @@ def serve_web_ui():
 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm text-gray-400 mb-1">Mode</label>
+                        <label class="block text-sm text-gray-400 mb-1">Source</label>
                         <div class="flex space-x-4">
                             <label class="flex items-center space-x-2 cursor-pointer">
                                 <input type="radio" name="scanMode" value="test" id="scanModeTest" checked onchange="updateScanMode()" class="accent-purple-500">
-                                <span class="text-sm">Test (Free Tasks)</span>
+                                <span class="text-sm">Free Tasks (GitHub)</span>
                             </label>
                             <label class="flex items-center space-x-2 cursor-pointer">
                                 <input type="radio" name="scanMode" value="prod" id="scanModeProd" onchange="updateScanMode()" class="accent-purple-500">
-                                <span class="text-sm">Production (Bounty Issues)</span>
+                                <span class="text-sm">Paid Bounties (Algora)</span>
                             </label>
                         </div>
                     </div>
 
-                    <div>
+                    <div id="priceRangeSection">
                         <label class="block text-sm text-gray-400 mb-1">Price Range ($)</label>
                         <div class="flex items-center space-x-2">
                             <input type="number" id="minPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm">
                             <span class="text-gray-400">to</span>
                             <input type="number" id="maxPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm">
                         </div>
-                        <p id="priceHint" class="text-xs text-gray-500 mt-1">Test mode: only free tasks ($0).</p>
+                        <p id="priceHint" class="text-xs text-gray-500 mt-1">0 = no filter. Set a range to filter bounties by price.</p>
                     </div>
 
                     <div>
@@ -460,7 +450,7 @@ def serve_web_ui():
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">Custom Query (optional)</label>
                         <input type="text" id="customQuery" placeholder="e.g. label:bug language:python" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-full text-sm">
-                        <p id="scanHint" class="text-xs text-gray-500 mt-1">Test mode: searches for "good first issue" labels.</p>
+                        <p id="scanHint" class="text-xs text-gray-500 mt-1">Free tasks: searches GitHub for issues. Paid: searches Algora + GitHub for bounty labels.</p>
                     </div>
                 </div>
 
@@ -507,19 +497,15 @@ def serve_web_ui():
 
             function updateScanMode() {
                 const isTest = document.getElementById('scanModeTest').checked;
-                document.getElementById('minPrice').value = isTest ? 0 : 5;
-                document.getElementById('maxPrice').value = isTest ? 0 : 150;
-                document.getElementById('minPrice').disabled = isTest;
-                document.getElementById('maxPrice').disabled = isTest;
-                document.getElementById('minPrice').classList.toggle('opacity-50', isTest);
-                document.getElementById('maxPrice').classList.toggle('opacity-50', isTest);
-                document.getElementById('priceHint').textContent = isTest
-                    ? 'Test mode: only free tasks ($0).'
-                    : 'Production mode: editable price range. Adjust to filter bounties.';
-                document.getElementById('priceHint').className = isTest ? 'text-xs text-yellow-500 mt-1' : 'text-xs text-gray-500 mt-1';
+                const priceSection = document.getElementById('priceRangeSection');
+                if (isTest) {
+                    priceSection.classList.add('hidden');
+                } else {
+                    priceSection.classList.remove('hidden');
+                }
                 document.getElementById('scanHint').textContent = isTest
-                    ? 'Test mode: searches for "good first issue" labels.'
-                    : 'Production mode: searches GitHub for issues mentioning bounties/rewards.';
+                    ? 'Searches GitHub for "good first issue" and "help wanted" labels.'
+                    : 'Searches Algora for paid bounties, plus GitHub for bounty/reward labels.';
             }
 
             async function executeScan() {
@@ -726,7 +712,6 @@ def serve_web_ui():
                     document.getElementById('cfgModelComplex').value = cfg.ollama_models?.complex_agent || '';
                     document.getElementById('cfgModelReviewer').value = cfg.ollama_models?.code_reviewer || '';
                     document.getElementById('cfgOllamaUrl').value = cfg.ollama_base_url || '';
-                    document.getElementById('cfgTestMode').checked = cfg.test_mode || false;
                     document.getElementById('cfgGitUsername').value = cfg.git?.username || '';
                     document.getElementById('cfgGitToken').value = cfg.git?.token || '';
                     document.getElementById('cfgWorkspacePath').value = cfg.workspace?.base_path || '';
@@ -755,9 +740,6 @@ def serve_web_ui():
                             complex_agent: document.getElementById('cfgModelComplex').value,
                             code_reviewer: document.getElementById('cfgModelReviewer').value,
                         },
-                    },
-                    test_mode: {
-                        enabled: document.getElementById('cfgTestMode').checked,
                     },
                 };
 
