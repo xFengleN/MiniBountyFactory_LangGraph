@@ -18,31 +18,29 @@ class CommentGenerator:
 
         parts = []
 
-        parts.append(f"Hi! I'm working on this issue via an automated bounty system.")
+        parts.append(f"Hey! I'd like to take a shot at this — looks like a good fit.")
         parts.append("")
 
         if check_result and check_result.get('contributing_rules'):
-            parts.append(f"I've reviewed your CONTRIBUTING.md and will follow the guidelines.")
+            parts.append(f"I've gone through CONTRIBUTING.md and will follow the guidelines.")
             parts.append("")
 
-        parts.append(f"- **Approach**: I'll analyze the codebase and generate a fix")
-        parts.append(f"- **Validation**: The fix will be tested before submission")
-        parts.append(f"- **Timeline**: PR expected within a few hours")
+        parts.append(f"I'll dig into the codebase, put together a fix, and make sure it passes tests before opening a PR.")
         parts.append("")
 
         if check_result and check_result.get('is_assigned'):
             assignees = check_result.get('assignees', [])
-            parts.append(f"⚠️ I see this issue is assigned to {', '.join(assignees)}.")
-            parts.append(f"If this assignment is outdated, please let me know and I'll proceed.")
+            parts.append(f"⚠️ Looks like this is assigned to {', '.join(assignees)}.")
+            parts.append(f"If that's still active, no worries — just let me know.")
             parts.append("")
 
         if check_result and check_result.get('recent_claims'):
             claim = check_result['recent_claims'][0]
-            parts.append(f"⚠️ I see @{claim['user']} claimed this {claim['time']}.")
-            parts.append(f"If the issue is still available, I'll proceed with the fix.")
+            parts.append(f"⚠️ I see @{claim['user']} picked this up {claim['time']}.")
+            parts.append(f"If it's still up for grabs, I'll get started.")
             parts.append("")
 
-        parts.append(f"I'll submit a PR once the fix is validated. Please let me know if there are specific requirements I should follow.")
+        parts.append(f"Will open a PR once I've got something solid. Happy to adjust if there's a particular direction you'd prefer.")
 
         return '\n'.join(parts)
 
@@ -50,9 +48,9 @@ class CommentGenerator:
         title = bounty.get('title', '')
 
         templates = {
-            'pr_submitted': f"PR has been submitted for this issue. Please review when you have a moment.",
-            'fix_failed': f"I attempted to generate a fix but encountered issues. The issue may need more clarification.",
-            'validation_failed': f"A fix was generated but failed validation tests. Further investigation needed.",
+            'pr_submitted': f"Just opened a PR for this. Take a look when you get a chance!",
+            'fix_failed': f"Ran into some trouble putting together a fix — might need a bit more context on this one.",
+            'validation_failed': f"Got a fix together but it didn't pass the test suite. Might need another look at the requirements.",
         }
 
         return templates.get(status, f"Status update: {status}")
