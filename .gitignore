@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+data/*.db
+data/*.sqlite
+
+# Logs
+logs/*.log
+
+# Workspace (cloned repos)
+../bounty_workspaces/
+
+# Environment
+.env
+
+# Sandbox temp files
+sandbox_*.json
+
+# Queue
+queue/

@@ -1,0 +1,296 @@
+import time
+import threading
+from typing import Dict, Any, Optional, List
+from datetime import datetime
+
+from .algora_client import AlgoraClient
+from .database import db
+from .task_processor import task_processor
+from .config import config
+from .graph import get_compiled_graph
+from .sandbox import kill_running_containers
+from ..agents.router import AgentRouter
+from ..agents.code_reviewer import CodeReviewAgent
+from ..agents.pr_creator import PRCreator
+from ..agents.github_scout import GitHubScout
+from ..agents.github_checker import GitHubIssueChecker
+from ..agents.comment_generator import CommentGenerator
+from ..agents.repo_mapper import RepoMapper
+from ..agents.test_runner import TestRunner
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class BountyFactoryOrchestrator:
+    def __init__(self):
+        self.algora_client = AlgoraClient()
+        self.github_scout = GitHubScout(config.git.get('token'))
+        self.github_checker = GitHubIssueChecker(config.git.get('token'))
+        self.comment_generator = CommentGenerator()
+        self.router = AgentRouter()
+        self.code_reviewer = CodeReviewAgent()
+        self.pr_creator = PRCreator()
+        self.repo_mapper = RepoMapper()
+        self.test_runner = TestRunner()
+
+        self.running = False
+        self.worker_thread = None
+        self.fetch_interval = config.get('agents.fetch_interval', 300)
+
+    def start(self):
+        logger.info("Starting Bounty Factory Orchestrator")
+        self.running = True
+        task_processor.start()
+
+        self.worker_thread = threading.Thread(target=self._run_worker, daemon=True)
+        self.worker_thread.start()
+
+        logger.info("Bounty Factory started")
+
+    def stop(self):
+        if not self.running:
+            return
+        logger.info("Stopping Bounty Factory Orchestrator")
+        self.running = False
+
+        task_processor.stop(timeout=60)
+
+        killed = kill_running_containers()
+        if killed > 0:
+            logger.info(f"Killed {killed} running sandbox containers")
+
+        reset = db.reset_processing_bounties()
+        if reset > 0:
+            logger.info(f"Reset {reset} interrupted bounties back to 'new'")
+
+        if self.worker_thread and self.worker_thread.is_alive():
+            self.worker_thread.join(timeout=10)
+            if self.worker_thread.is_alive():
+                logger.warning("Worker thread did not finish within timeout")
+
+    def _run_worker(self):
+        while self.running:
+            try:
+                self._process_cycle()
+            except Exception as e:
+                logger.error(f"Worker cycle failed: {e}")
+
+            for _ in range(self.fetch_interval):
+                if not self.running:
+                    break
+                time.sleep(1)
+
+    def _process_cycle(self):
+        logger.info("Starting processing cycle")
+
+        db.cleanup_stale_tasks(days=30)
+        db.cleanup_old_logs(days=30)
+
+        if self.github_scout.is_available():
+            logger.info("Fetching issues from GitHub...")
+            gh_count = self.github_scout.fetch_and_store()
+            logger.info(f"Fetched {gh_count} issues from GitHub")
+
+        pending_bounties = db.get_pending_bounties()
+        logger.info(f"Processing {len(pending_bounties)} pending bounties")
+
+        for bounty in pending_bounties:
+            self._process_bounty(bounty)
+
+    def _process_bounty(self, bounty: Dict[str, Any]) -> bool:
+        bounty_id = bounty['id']
+        title = bounty['title']
+
+        logger.info(f"Processing bounty {bounty_id}: {title}")
+
+        db.update_bounty_status(bounty_id, 'processing')
+        db.log_processing(bounty_id, 'orchestrator', 'start', 'processing')
+
+        try:
+            graph = get_compiled_graph()
+            config = {"configurable": {"thread_id": str(bounty_id)}}
+
+            initial_state = {
+                "bounty_id": bounty_id,
+                "bounty": bounty,
+                "retry_count": 0,
+            }
+
+            final_state = graph.invoke(initial_state, config=config)
+
+            status = final_state.get("status", "")
+            if status == "queued_for_review":
+                logger.info(f"Bounty {bounty_id} queued for review via graph")
+                return True
+            elif status == "failed":
+                error = final_state.get("error", "Unknown error")
+                logger.warning(f"Bounty {bounty_id} failed in graph: {error}")
+                db.update_bounty_status(bounty_id, 'failed')
+                return False
+            else:
+                db.update_bounty_status(bounty_id, 'error')
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to process bounty {bounty_id}: {e}")
+            db.update_bounty_status(bounty_id, 'error')
+            db.log_processing(bounty_id, 'orchestrator', 'error', 'error', str(e))
+            return False
+
+    def submit_pr(self, review_id: int) -> Optional[str]:
+        reviews = db.get_pending_reviews()
+        review = next((r for r in reviews if r['id'] == review_id), None)
+
+        if not review:
+            logger.error(f"Review {review_id} not found")
+            return None
+
+        bounty = db.get_bounty_by_id(review['bounty_id'])
+        if not bounty:
+            logger.error(f"Bounty not found for review {review_id}")
+            return None
+
+        pr_url = self.pr_creator.create_pr(
+            repo_url=bounty['repository_url'],
+            branch_name=review['branch_name'],
+            bounty=bounty,
+            commit_sha=review['commit_sha'],
+            workspace_path=review.get('workspace_path'),
+        )
+
+        if pr_url:
+            db.update_review_pr(review_id, pr_url)
+            db.update_bounty_status(bounty['id'], 'pr_created')
+            logger.info(f"PR submitted for bounty {bounty['id']}: {pr_url}")
+
+        return pr_url
+
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            'running': self.running,
+            'router_status': self.router.get_status(),
+            'code_reviewer_available': self.code_reviewer.is_available(),
+            'pr_creator_configured': self.pr_creator.is_configured(),
+            'github_scout_available': self.github_scout.is_available(),
+            'repo_mapper_available': True,
+            'test_runner_available': True,
+            'pending_reviews': len(db.get_pending_reviews())
+        }
+
+    def pre_check_bounty(self, bounty_id: int) -> Dict[str, Any]:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            return {'error': 'Bounty not found'}
+
+        issue_url = bounty.get('issue_url', '')
+        if not issue_url:
+            return {'valid': False, 'error': 'No issue URL available'}
+
+        check_result = self.github_checker.check_issue(issue_url)
+        suggested_comment = self.comment_generator.generate_intent_comment(bounty, check_result)
+
+        return {
+            'valid': check_result.get('valid', False),
+            'is_assigned': check_result.get('is_assigned', False),
+            'assignees': check_result.get('assignees', []),
+            'recent_claims': check_result.get('recent_claims', []),
+            'has_contributing': check_result.get('has_contributing', False),
+            'contributing_rules': check_result.get('contributing_rules', ''),
+            'warnings': check_result.get('warnings', []),
+            'suggested_comment': suggested_comment,
+        }
+
+    def process_single_bounty(self, bounty_id: int) -> Dict[str, Any]:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            return {'success': False, 'error': 'Bounty not found'}
+
+        db.update_bounty_status(bounty_id, 'processing')
+        db.log_processing(bounty_id, 'orchestrator', 'submitted', 'processing', 'Task queued for processing')
+
+        task_processor.submit(bounty_id, self._process_bounty_sync)
+        return {'success': True, 'bounty_id': bounty_id, 'queued': True}
+
+    def _process_bounty_sync(self, bounty_id: int) -> Dict[str, Any]:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            return {'success': False, 'error': 'Bounty not found'}
+
+        success = self._process_bounty(bounty)
+        return {'success': success, 'bounty_id': bounty_id}
+
+    def manual_scan(
+        self,
+        test_mode: bool = True,
+        query: str = None,
+        limit: int = 10,
+        min_price: int = 0,
+        max_price: int = 0
+    ) -> int:
+        mode = 'test' if test_mode else 'prod'
+        logger.info(f"Manual scan: mode={mode}, query={query}, limit={limit}, price=${min_price}-${max_price}")
+
+        db.cleanup_stale_tasks(days=30)
+
+        count = 0
+
+        if test_mode:
+            if self.github_scout.is_available():
+                if query:
+                    issues = self.github_scout.search_issues(query=query, limit=limit)
+                else:
+                    queries = config.get('test_mode.github_queries', [])
+                    issues = []
+                    for q in queries:
+                        issues.extend(self.github_scout.search_issues(query=q, limit=limit))
+                count = self.github_scout.store_issues(issues)
+        else:
+            algora_bounties = self.algora_client.fetch_bounties(limit=limit)
+
+            if min_price > 0 or max_price > 0:
+                filtered = []
+                for bounty in algora_bounties:
+                    price = bounty.get('price')
+                    if price is None:
+                        continue
+                    if min_price > 0 and price < min_price:
+                        continue
+                    if max_price > 0 and price > max_price:
+                        continue
+                    filtered.append(bounty)
+                algora_bounties = filtered
+
+            count = self.github_scout.store_issues(algora_bounties)
+
+            if self.github_scout.is_available():
+                if query:
+                    gh_issues = self.github_scout.search_issues(query=query, limit=limit)
+                else:
+                    bounty_queries = [
+                        'label:"bounty" state:open',
+                        'label:"bug bounty" state:open',
+                        'label:"reward" state:open',
+                    ]
+                    gh_issues = []
+                    for q in bounty_queries:
+                        gh_issues.extend(self.github_scout.search_issues(query=q, limit=limit))
+
+                if min_price > 0 or max_price > 0:
+                    filtered = []
+                    for issue in gh_issues:
+                        price = issue.get('price')
+                        if price is None:
+                            continue
+                        if min_price > 0 and price < min_price:
+                            continue
+                        if max_price > 0 and price > max_price:
+                            continue
+                        filtered.append(issue)
+                    gh_issues = filtered
+
+                gh_count = self.github_scout.store_issues(gh_issues)
+                count += gh_count
+
+        logger.info(f"Manual scan complete: found {count} tasks")
+        return count

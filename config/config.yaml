@@ -1,0 +1,57 @@
+# Bounty Factory Configuration
+
+test_mode:
+  enabled: true
+  # GitHub queries for free test tasks
+  github_queries:
+    - 'label:"good first issue" state:open language:TypeScript'
+    - 'label:"good first issue" state:open language:JavaScript'
+    - 'label:"good first issue" state:open language:Python'
+    - 'label:"help wanted" label:bug state:open'
+  # Skip paid bounties in test mode
+  skip_paid: true
+  # Limit tasks per scan
+  max_tasks_per_scan: 10
+
+ollama:
+  base_url: "http://localhost:11434"
+  # Models for different tasks
+  models:
+    classifier: "qwen2.5:0.5b"      # Lightweight for classification
+    simple_agent: "qwen2.5-coder:7b-instruct-q4_K_M" # Code-specialized for task execution
+    complex_agent: "qwen2.5-coder:7b-instruct-q4_K_M" # Code-specialized for complex tasks
+    code_reviewer: "qwen2.5-coder:7b-instruct-q4_K_M" # Code-specialized for review
+
+opencode:
+  # TODO: Replace with your API key
+  api_key: "YOUR_OPENCODE_API_KEY"
+  base_url: "https://api.opencode.ai"
+  # Timeout for complex tasks (seconds)
+  timeout: 300
+
+agents:
+  # Classification thresholds
+  simple_task_max_loc: 50      # Lines of code threshold
+  simple_task_max_files: 3     # Max files affected
+  # Retry settings
+  max_retries: 3
+  retry_delay: 60
+
+database:
+  path: "data/bounty_factory.db"
+
+workspace:
+  base_path: "../bounty_workspaces"
+
+git:
+  # GitHub credentials for PR creation
+  # TODO: Replace with your details
+  username: "YOUR_GITHUB_USERNAME"
+  token: "YOUR_GITHUB_TOKEN"
+  default_branch: "main"
+
+logging:
+  level: "INFO"
+  file: "logs/bounty_factory.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
