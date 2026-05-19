@@ -432,25 +432,42 @@ def serve_web_ui():
                         </div>
                     </div>
 
-                    <div id="priceRangeSection">
+                    <div id="priceRangeSection" class="hidden">
                         <label class="block text-sm text-gray-400 mb-1">Price Range ($)</label>
                         <div class="flex items-center space-x-2">
                             <input type="number" id="minPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm">
                             <span class="text-gray-400">to</span>
                             <input type="number" id="maxPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm">
                         </div>
-                        <p id="priceHint" class="text-xs text-gray-500 mt-1">0 = no filter. Set a range to filter bounties by price.</p>
+                        <p class="text-xs text-gray-500 mt-1">0 = no filter. Set a range to filter bounties by price.</p>
+                    </div>
+
+                    <div id="labelSelectorSection">
+                        <label class="block text-sm text-gray-400 mb-1">Labels to Search</label>
+                        <div id="selectedLabels" class="flex flex-wrap gap-1 mb-2"></div>
+                        <div id="labelDropdownContainer">
+                            <select id="labelSelector" onchange="addLabel()" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-full text-sm">
+                                <option value="">— Select a label —</option>
+                                <option value="good first issue">good first issue</option>
+                                <option value="help wanted">help wanted</option>
+                                <option value="first-timers-only">first-timers-only</option>
+                                <option value="up-for-grabs">up-for-grabs</option>
+                                <option value="low hanging fruit">low hanging fruit</option>
+                                <option value="bug">bug</option>
+                                <option value="enhancement">enhancement</option>
+                                <option value="documentation">documentation</option>
+                                <option value="refactor">refactor</option>
+                                <option value="needs-tests">needs-tests</option>
+                                <option value="bounty">bounty</option>
+                                <option value="hacktoberfest">hacktoberfest</option>
+                            </select>
+                        </div>
+                        <p id="labelHint" class="text-xs text-gray-500 mt-1">No labels selected — will use default queries from config.</p>
                     </div>
 
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">Max Tasks</label>
                         <input type="number" id="maxTasks" value="10" min="1" max="50" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">Custom Query (optional)</label>
-                        <input type="text" id="customQuery" placeholder="e.g. label:bug language:python" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-full text-sm">
-                        <p id="scanHint" class="text-xs text-gray-500 mt-1">Free tasks: searches GitHub for issues. Paid: searches Algora + GitHub for bounty labels.</p>
                     </div>
                 </div>
 
@@ -490,22 +507,55 @@ def serve_web_ui():
             }
 
             function openScanModal() {
+                window._selectedLabels = [];
+                renderLabels();
+                updateScanMode();
                 document.getElementById('scanModal').classList.remove('hidden');
                 document.getElementById('scanModal').classList.add('flex');
-                updateScanMode();
             }
 
             function updateScanMode() {
                 const isTest = document.getElementById('scanModeTest').checked;
-                const priceSection = document.getElementById('priceRangeSection');
-                if (isTest) {
-                    priceSection.classList.add('hidden');
-                } else {
-                    priceSection.classList.remove('hidden');
+                document.getElementById('priceRangeSection').classList.toggle('hidden', isTest);
+                document.getElementById('labelSelectorSection').classList.toggle('hidden', !isTest);
+            }
+
+            function addLabel() {
+                const sel = document.getElementById('labelSelector');
+                const val = sel.value;
+                if (val && !window._selectedLabels.includes(val)) {
+                    window._selectedLabels.push(val);
+                    renderLabels();
                 }
-                document.getElementById('scanHint').textContent = isTest
-                    ? 'Searches GitHub for "good first issue" and "help wanted" labels.'
-                    : 'Searches Algora for paid bounties, plus GitHub for bounty/reward labels.';
+                sel.value = '';
+            }
+
+            function removeLabel(label) {
+                window._selectedLabels = window._selectedLabels.filter(l => l !== label);
+                renderLabels();
+            }
+
+            function renderLabels() {
+                const container = document.getElementById('selectedLabels');
+                const hint = document.getElementById('labelHint');
+                const dropdown = document.getElementById('labelSelector');
+
+                container.innerHTML = window._selectedLabels.map(l =>
+                    `<span class="inline-flex items-center gap-1 bg-purple-600 text-white text-xs px-2 py-1 rounded">
+                        ${l}
+                        <button onclick="removeLabel('${l}')" class="hover:text-purple-200 ml-1">×</button>
+                    </span>`
+                ).join('');
+
+                if (window._selectedLabels.length === 0) {
+                    hint.textContent = 'No labels selected — will use default queries from config.';
+                    hint.className = 'text-xs text-gray-500 mt-1';
+                } else {
+                    hint.textContent = `${window._selectedLabels.length} label(s) selected — will search for each.`;
+                    hint.className = 'text-xs text-green-400 mt-1';
+                }
+
+                dropdown.disabled = window._selectedLabels.length >= 10;
             }
 
             async function executeScan() {
@@ -514,7 +564,7 @@ def serve_web_ui():
                 const minPrice = parseInt(document.getElementById('minPrice').value) || 0;
                 const maxPrice = parseInt(document.getElementById('maxPrice').value) || 0;
                 const limit = parseInt(document.getElementById('maxTasks').value) || 10;
-                const customQuery = document.getElementById('customQuery').value.trim();
+                const labels = window._selectedLabels || [];
 
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Scanning...';
@@ -528,7 +578,7 @@ def serve_web_ui():
                             min_price: minPrice,
                             max_price: maxPrice,
                             limit: limit,
-                            query: customQuery || null
+                            labels: labels.length > 0 ? labels : null
                         })
                     });
                     const data = await res.json();
@@ -1668,11 +1718,11 @@ def scan_tasks():
     min_price = data.get('min_price', 0)
     max_price = data.get('max_price', 0)
     limit = data.get('limit', 10)
-    query = data.get('query')
+    labels = data.get('labels')
 
     count = orchestrator.manual_scan(
         test_mode=test_mode,
-        query=query,
+        labels=labels,
         limit=limit,
         min_price=min_price,
         max_price=max_price

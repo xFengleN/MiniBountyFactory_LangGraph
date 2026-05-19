@@ -223,13 +223,13 @@ class BountyFactoryOrchestrator:
     def manual_scan(
         self,
         test_mode: bool = True,
-        query: str = None,
+        labels: list = None,
         limit: int = 10,
         min_price: int = 0,
         max_price: int = 0
     ) -> int:
         mode = 'test' if test_mode else 'prod'
-        logger.info(f"Manual scan: mode={mode}, query={query}, limit={limit}, price=${min_price}-${max_price}")
+        logger.info(f"Manual scan: mode={mode}, labels={labels}, limit={limit}, price=${min_price}-${max_price}")
 
         db.cleanup_stale_tasks(days=30)
 
@@ -237,17 +237,17 @@ class BountyFactoryOrchestrator:
 
         if test_mode:
             if self.github_scout.is_available():
-                if query:
-                    issues = self.github_scout.search_issues(query=query, limit=limit)
+                if labels:
+                    queries = [f'label:"{label}" state:open' for label in labels]
                 else:
                     queries = config.get('test_mode.github_queries', [])
-                    issues = []
-                    per_query = max(1, limit // len(queries)) if queries else limit
-                    for q in queries:
-                        issues.extend(self.github_scout.search_issues(query=q, limit=per_query))
-                        if len(issues) >= limit:
-                            break
-                    issues = issues[:limit]
+                issues = []
+                per_query = max(1, limit // len(queries)) if queries else limit
+                for q in queries:
+                    issues.extend(self.github_scout.search_issues(query=q, limit=per_query))
+                    if len(issues) >= limit:
+                        break
+                issues = issues[:limit]
                 count = self.github_scout.store_issues(issues)
         else:
             algora_bounties = self.algora_client.fetch_bounties(limit=limit)
