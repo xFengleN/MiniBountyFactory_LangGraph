@@ -499,6 +499,12 @@ def serve_web_ui():
                 document.getElementById('scanModal').classList.remove('flex');
             }
 
+            function openScanModal() {
+                document.getElementById('scanModal').classList.remove('hidden');
+                document.getElementById('scanModal').classList.add('flex');
+                updateScanMode();
+            }
+
             function updateScanMode() {
                 const isTest = document.getElementById('scanModeTest').checked;
                 document.getElementById('minPrice').value = isTest ? 0 : 5;
