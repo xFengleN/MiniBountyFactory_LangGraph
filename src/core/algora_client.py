@@ -35,18 +35,34 @@ class AlgoraClient:
             items = result.get('data', {}).get('json', {}).get('items', [])
 
             bounties = []
+            seen_urls = set()
             for item in items:
                 task = item.get('task', {})
                 org = item.get('org', {})
                 reward = item.get('reward_formatted', '')
 
-                price = self._parse_price(reward)
-
                 issue_url = task.get('url') or ''
+
+                # Skip items with no URL
+                if not issue_url:
+                    repo_owner = task.get('repo_owner') or ''
+                    repo_name = task.get('repo_name') or ''
+                    issue_number = task.get('number')
+                    if repo_owner and repo_name and issue_number:
+                        issue_url = f'https://github.com/{repo_owner}/{repo_name}/issues/{issue_number}'
+                    else:
+                        logger.debug(f'Skipping Algora item {item.get("id")}: no URL or repo info')
+                        continue
+
+                # Skip duplicates
+                if issue_url in seen_urls:
+                    continue
+                seen_urls.add(issue_url)
+
                 # Extract repo URL from issue URL
                 # e.g. https://github.com/org/repo/issues/123 -> https://github.com/org/repo
                 repo_url = issue_url
-                if issue_url and 'github.com' in issue_url:
+                if 'github.com' in issue_url:
                     parts = issue_url.rstrip('/').split('/')
                     if len(parts) >= 5:
                         repo_url = '/'.join(parts[:5])
@@ -55,11 +71,11 @@ class AlgoraClient:
                     'id': f'algora-{item.get("id")}',
                     'title': task.get('title', ''),
                     'description': task.get('body', '') or '',
-                    'price': price,
+                    'price': self._parse_price(reward),
                     'currency': 'USD',
                     'difficulty': self._estimate_difficulty(task),
                     'repository_url': repo_url,
-                    'repository_name': task.get('repo_name', ''),
+                    'repository_name': task.get('repo_name') or '',
                     'issue_url': issue_url,
                     'tags': ','.join(task.get('tech') or []),
                     'created_at': item.get('created_at'),
