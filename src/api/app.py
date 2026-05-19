@@ -1381,6 +1381,7 @@ def dashboard_stats():
     global _startup_time
     import subprocess
     import os as _os
+    from ..core.config import config as app_config
 
     stats = {}
 
@@ -1428,7 +1429,7 @@ def dashboard_stats():
             image_built = r.returncode == 0
         except Exception:
             pass
-    sandbox_enabled = config.get('sandbox', {}).get('enabled', True)
+    sandbox_enabled = app_config.get('sandbox', {}).get('enabled', True)
     stats['sandbox'] = {
         'available': runtime is not None,
         'runtime': runtime,

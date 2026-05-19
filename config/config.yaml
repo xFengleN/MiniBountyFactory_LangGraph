@@ -15,13 +15,13 @@ ollama:
     complex_agent: qwen2.5-coder:7b-instruct-q4_K_M
     code_reviewer: qwen2.5-coder:7b-instruct-q4_K_M
 sandbox:
-  enabled: true
+  enabled: false
   image: bounty-sandbox:latest
   memory: 2g
   cpus: '2'
   timeout: 600
 opencode:
-  api_key: YOUR_OPENCODE_API_KEY
+  api_key: YOUR..._KEY
   base_url: https://api.opencode.ai
   timeout: 300
 agents:
@@ -35,7 +35,7 @@ workspace:
   base_path: ../bounty_workspaces
 git:
   username: YOUR_GITHUB_USERNAME
-  token: YOUR_GITHUB_TOKEN
+  token: YOUR...OKEN
   default_branch: main
 logging:
   level: INFO
