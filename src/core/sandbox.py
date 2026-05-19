@@ -3,8 +3,9 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Optional, List
 
 from .config import config
 from .database import db
@@ -13,15 +14,12 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 SANDBOX_IMAGE = "bounty-sandbox:latest"
-SANDBOX_TIMEOUT = 600
+SANDBOX_TIMEOUT = 300
 SANDBOX_MEMORY = "2g"
 SANDBOX_CPUS = "2"
 
 _build_lock = threading.Lock()
 _image_built = False
-
-_container_registry: Dict[int, subprocess.Popen] = {}
-_registry_lock = threading.Lock()
 _shutdown_requested = False
 
 
@@ -93,36 +91,9 @@ def is_shutdown_requested() -> bool:
     return _shutdown_requested
 
 
-def register_container(bounty_id: int, proc: subprocess.Popen):
-    with _registry_lock:
-        _container_registry[bounty_id] = proc
-
-
-def unregister_container(bounty_id: int):
-    with _registry_lock:
-        _container_registry.pop(bounty_id, None)
-
-
 def kill_running_containers() -> int:
-    killed = 0
-    with _registry_lock:
-        snapshot = dict(_container_registry)
-    for bounty_id, proc in snapshot.items():
-        try:
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=5)
-                logger.info(f"Killed container for bounty {bounty_id}")
-                killed += 1
-        except Exception as e:
-            logger.warning(f"Failed to kill container for bounty {bounty_id}: {e}")
-    with _registry_lock:
-        _container_registry.clear()
-    return killed
+    """No-op: validation containers are short-lived and auto-removed (--rm)."""
+    return 0
 
 
 def _ensure_pip_cache_volume(runtime):
@@ -173,6 +144,272 @@ def _read_repo_files(sandbox_dir, max_files=20):
     return "\n\n".join(content_parts)
 
 
+def _generate_fix_on_host(
+    bounty: Dict[str, Any],
+    agent_type: str,
+    model: str,
+    repo_files: str,
+    subtasks: list = None,
+) -> Optional[Dict[str, Any]]:
+    """Generate fix using Ollama directly on the host (native speed)."""
+    from langchain_ollama import ChatOllama
+    from pydantic import BaseModel
+    from typing import List as TypingList
+
+    class FileChange(BaseModel):
+        path: str
+        content: str
+        action: str
+
+    class FixOutput(BaseModel):
+        files: TypingList[FileChange]
+        confidence: float = 0.8
+        reasoning: str = ""
+
+    title = bounty.get("title", "")
+    description = bounty.get("description", "")
+    issue_url = bounty.get("issue_url", "")
+    ollama_url = config.ollama.get("base_url", "http://localhost:11434")
+
+    llm_raw = ChatOllama(
+        model=model,
+        base_url=ollama_url,
+        temperature=0.3,
+        num_predict=16384,
+    )
+
+    llm_structured = llm_raw.with_structured_output(FixOutput)
+
+    all_files = []
+
+    def _invoke_with_fallback(prompt: str) -> Optional[TypingList[Dict]]:
+        try:
+            fix_result: FixOutput = llm_structured.invoke(prompt)
+            return [f.model_dump() for f in fix_result.files]
+        except Exception as e:
+            logger.warning(f"Structured output failed, trying raw JSON parse: {e}")
+            try:
+                raw_response = llm_raw.invoke(prompt)
+                content = raw_response.content if hasattr(raw_response, 'content') else str(raw_response)
+                import re
+                json_match = re.search(r'\{[\s\S]*"files"[\s\S]*\}', content)
+                if json_match:
+                    parsed = json.loads(json_match.group())
+                    if "files" in parsed:
+                        return parsed["files"]
+                logger.error("Could not extract files from raw response")
+                return None
+            except Exception as e2:
+                logger.error(f"Raw fallback also failed: {e2}")
+                return None
+
+    if agent_type == "simple":
+        system_prompt = """You are a code generation assistant. Fix bugs or implement small features.
+Guidelines:
+1. Only modify necessary files
+2. Make minimal, focused changes
+3. Follow existing code style
+4. Do NOT add unnecessary features"""
+
+        user_prompt = f"""Issue Title: {title}
+
+Issue Description:
+{description}
+
+Issue URL: {issue_url}
+
+Repository Files (sample):
+{repo_files}
+
+Generate the fix."""
+
+        try:
+            files_result = _invoke_with_fallback(user_prompt)
+            if files_result:
+                all_files = files_result
+        except Exception as e:
+            logger.error(f"LLM fix generation failed: {e}")
+            return None
+
+    else:
+        if subtasks:
+            for subtask in subtasks:
+                subtask_desc = subtask.get("description", "")
+                subtask_prompt = f"""Subtask: {subtask_desc}
+Original issue: {title}
+Description: {description[:500]}
+
+Repository Files (sample):
+{repo_files}
+
+Solve this subtask."""
+
+                try:
+                    files_result = _invoke_with_fallback(subtask_prompt)
+                    if files_result:
+                        all_files.extend(files_result)
+                except Exception as e:
+                    logger.error(f"Subtask LLM failed: {e}")
+                    continue
+        else:
+            complex_prompt = f"""Issue Title: {title}
+
+Issue Description:
+{description}
+
+Issue URL: {issue_url}
+
+Repository Files (sample):
+{repo_files}
+
+Generate the fix."""
+
+            try:
+                files_result = _invoke_with_fallback(complex_prompt)
+                if files_result:
+                    all_files = files_result
+            except Exception as e:
+                logger.error(f"Complex LLM failed: {e}")
+                return None
+
+    if not all_files:
+        return None
+
+    return {
+        "success": True,
+        "agent_type": agent_type,
+        "files_changed": all_files,
+        "model_used": model,
+    }
+
+
+def _run_validation_in_container(
+    runtime: str,
+    sandbox_dir: Path,
+    bounty_id: int,
+) -> Dict[str, Any]:
+    """Run install + test commands inside a sandboxed container using podman cp."""
+    install_cmd = _detect_install_command(sandbox_dir)
+    test_cmd = _detect_test_command(sandbox_dir)
+
+    if not install_cmd and not test_cmd:
+        return {"install_ok": True, "tests_ok": True, "overall": True, "failures": []}
+
+    container_cmds = []
+    if install_cmd:
+        container_cmds.append(f"cd /workspace && {install_cmd}")
+    if test_cmd:
+        container_cmds.append(f"cd /workspace && {test_cmd}")
+
+    script = " && ".join(container_cmds)
+
+    # Create container without volume mounts (Podman VM can't see /Volumes on macOS)
+    container_cmd_create = [
+        runtime, "create",
+        "--name", f"bounty-validate-{bounty_id}",
+        "--memory", SANDBOX_MEMORY,
+        "--cpus", SANDBOX_CPUS,
+        "--network", "none",
+        "--security-opt", "no-new-privileges",
+        "--cap-drop", "ALL",
+        SANDBOX_IMAGE,
+        "bash", "-c", script,
+    ]
+
+    _log(bounty_id, "sandbox", f"Creating validation container ({runtime})", "processing")
+
+    container_id = None
+    try:
+        # Create container
+        create_result = subprocess.run(
+            container_cmd_create,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if create_result.returncode != 0:
+            raise Exception(f"Container create failed: {create_result.stderr}")
+        container_id = create_result.stdout.strip()
+
+        # Copy workspace into container
+        _log(bounty_id, "sandbox", "Copying workspace into container", "processing")
+        cp_result = subprocess.run(
+            [runtime, "cp", str(sandbox_dir), f"{container_id}:/workspace"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if cp_result.returncode != 0:
+            raise Exception(f"Container cp failed: {cp_result.stderr}")
+
+        # Start container
+        _log(bounty_id, "sandbox", f"Running validation in container ({runtime})", "processing")
+        start_result = subprocess.run(
+            [runtime, "start", "-a", container_id],
+            capture_output=True,
+            text=True,
+            timeout=SANDBOX_TIMEOUT,
+        )
+
+        validation = {
+            "install_ok": True,
+            "tests_ok": True,
+            "overall": True,
+            "failures": [],
+            "stdout": start_result.stdout[:2000] if start_result.stdout else "",
+            "stderr": start_result.stderr[:2000] if start_result.stderr else "",
+            "exit_code": start_result.returncode,
+        }
+
+        if install_cmd and start_result.returncode != 0:
+            validation["install_ok"] = False
+            validation["overall"] = False
+            validation["failures"].append(f"Install failed (exit {start_result.returncode})")
+            return validation
+
+        if test_cmd:
+            if start_result.returncode != 0:
+                validation["tests_ok"] = False
+                validation["overall"] = False
+                for line in (start_result.stdout + start_result.stderr).splitlines():
+                    lower = line.lower()
+                    if any(kw in lower for kw in ["error", "failed", "expect", "exception", "assert"]):
+                        validation["failures"].append(line.strip())
+                        if len(validation["failures"]) >= 10:
+                            break
+            else:
+                validation["tests_ok"] = True
+
+        return validation
+
+    except subprocess.TimeoutExpired:
+        _log(bounty_id, "sandbox", f"Validation timed out after {SANDBOX_TIMEOUT}s", "error")
+        return {
+            "install_ok": False,
+            "tests_ok": False,
+            "overall": False,
+            "failures": ["Validation timed out"],
+            "exit_code": -1,
+        }
+    except Exception as e:
+        logger.error(f"Validation container failed: {e}")
+        return {
+            "install_ok": False,
+            "tests_ok": False,
+            "overall": False,
+            "failures": [str(e)],
+            "exit_code": -1,
+        }
+    finally:
+        # Clean up container
+        if container_id:
+            subprocess.run(
+                [runtime, "rm", "-f", container_id],
+                capture_output=True,
+                timeout=10,
+            )
+
+
 def run_sandbox_task(
     bounty: Dict[str, Any],
     agent_type: str,
@@ -180,25 +417,25 @@ def run_sandbox_task(
     subtasks: list = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    Host clones repo (fast native SSD), reads files, passes to container.
-    Container calls Ollama, generates fix JSON.
-    Host applies fix, commits, validates.
+    New architecture:
+    1. Host clones repo (fast native SSD)
+    2. Host generates fix via Ollama directly (native speed, no VM hop)
+    3. Host applies fix, commits
+    4. Container runs validation (install + tests) in sandbox
+    5. Host parses results
     """
     bounty_id = bounty.get("id")
     repo_url = bounty.get("repository_url", "")
-    title = bounty.get("title", "")
-    description = bounty.get("description", "")
-    issue_url = bounty.get("issue_url", "")
 
     sandbox_cfg = config.get("sandbox", {})
     if not sandbox_cfg.get("enabled", True):
-        logger.info("Sandbox disabled in config, using local agent")
+        logger.info("Sandbox disabled, using local agent")
         _log(bounty_id, "sandbox", "Sandbox disabled, using local agent", "warning")
         return None
 
     runtime = _detect_container_runtime()
     if not runtime:
-        logger.warning("No container runtime available (docker/podman), falling back to local execution")
+        logger.warning("No container runtime available, falling back to local execution")
         _log(bounty_id, "sandbox", "No container runtime, using local agent", "warning")
         return None
 
@@ -212,7 +449,9 @@ def run_sandbox_task(
     workspace_base = config.get("workspace.base_path")
     sandbox_dir = Path(workspace_base) / f"bounty_{bounty_id}"
 
-    # Step 1: Clone on host (fast native SSD)
+    model = model or config.ollama.get("models.simple_agent", "qwen2.5-coder:7b-instruct-q4_K_M")
+
+    # Step 1: Clone on host
     if sandbox_dir.exists() and (sandbox_dir / ".git").exists():
         _log(bounty_id, "sandbox", "Workspace already exists, skipping clone", "processing")
     else:
@@ -230,124 +469,55 @@ def run_sandbox_task(
     # Step 2: Read relevant files
     repo_files = _read_repo_files(sandbox_dir)
 
-    # Step 3: Run container (isolated LLM call, no file I/O)
-    task_config = {
-        "bounty": bounty,
-        "agent_type": agent_type,
-        "model": model or config.ollama.get("models.simple_agent", "qwen2.5-coder:7b-instruct-q4_K_M"),
-        "repo_files": repo_files,
-        "subtasks": subtasks or [],
-    }
+    # Step 3: Generate fix on host (native Ollama, no VM hop)
+    _log(bounty_id, "sandbox", f"Generating fix on host ({model})", "processing")
+    start_time = time.time()
 
-    # Write config to temp file to avoid env var size/escaping issues
-    import tempfile
-    config_fd, config_path = tempfile.mkstemp(suffix=".json", prefix=f"sandbox_{bounty_id}_")
-    try:
-        with os.fdopen(config_fd, 'w') as f:
-            json.dump(task_config, f)
+    fix_result = _generate_fix_on_host(bounty, agent_type, model, repo_files, subtasks)
 
-        # With --net=host, container shares host network.
-        # Podman on macOS: host.containers.internal reaches the Mac.
-        ollama_url = config.ollama.get("base_url", "http://localhost:11434")
-        if "localhost" in ollama_url or "127.0.0.1" in ollama_url:
-            ollama_url = ollama_url.replace("localhost", "host.containers.internal").replace("127.0.0.1", "host.containers.internal")
+    gen_duration = time.time() - start_time
+    _log(bounty_id, "sandbox", f"Fix generated in {gen_duration:.1f}s", "processing")
 
-        container_cmd = [
-            runtime, "run", "--rm",
-            "--memory", SANDBOX_MEMORY,
-            "--cpus", SANDBOX_CPUS,
-            "--network", "host",
-            "--security-opt", "no-new-privileges",
-            "--cap-drop", "ALL",
-            "--read-only",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
-            "-v", f"{config_path}:/sandbox/task_config.json:ro",
-            "-v", "bounty-pip-cache:/root/.cache/pip",
-            "-e", f"OLLAMA_BASE_URL={ollama_url}",
-            SANDBOX_IMAGE,
-        ]
+    if not fix_result:
+        _log(bounty_id, "sandbox", "LLM returned no valid fix", "error")
+        return {"success": False, "error": "LLM returned no valid fix"}
 
-        _log(bounty_id, "sandbox", f"Running container ({runtime}, {agent_type})", "processing")
+    # Step 4: Apply fix on host
+    _log(bounty_id, "sandbox", "Applying fix on host", "processing")
+    files_changed = fix_result.get("files_changed", [])
+    applied = _apply_files(sandbox_dir, files_changed)
 
-        try:
-            proc = subprocess.Popen(
-                container_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            register_container(bounty_id, proc)
+    if not applied:
+        _log(bounty_id, "sandbox", "No files applied", "error")
+        return {"success": False, "error": "No files applied"}
 
-            try:
-                stdout, stderr = proc.communicate(timeout=SANDBOX_TIMEOUT)
-                result = subprocess.CompletedProcess(container_cmd, proc.returncode, stdout, stderr)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                stdout, stderr = proc.communicate(timeout=10)
-                result = subprocess.CompletedProcess(container_cmd, -1, stdout, stderr)
-                raise subprocess.TimeoutExpired(container_cmd, SANDBOX_TIMEOUT)
-            finally:
-                unregister_container(bounty_id)
+    # Step 5: Commit
+    branch_name = f"bounty-fix-{bounty_id}"
+    _run_git(sandbox_dir, ["checkout", "-b", branch_name])
+    _run_git(sandbox_dir, ["add", "."])
+    _run_git(sandbox_dir, ["commit", "-m", f"Fix bounty #{bounty_id}"])
 
-            if result.returncode != 0:
-                stderr_preview = result.stderr[:200] if result.stderr else ""
-                _log(bounty_id, "sandbox", f"Container exited with code {result.returncode}", "error", stderr_preview)
-                return {"success": False, "error": f"Container failed (exit {result.returncode})"}
+    commit_sha = _run_git(sandbox_dir, ["rev-parse", "HEAD"]).strip()
+    diff_content = _run_git(sandbox_dir, ["diff", "HEAD~1", "HEAD"])
 
-            output = result.stdout.strip()
-            if not output:
-                _log(bounty_id, "sandbox", "Container produced no output", "error")
-                return {"success": False, "error": "Container produced no output"}
+    # Step 6: Validate in sandbox container
+    validation = _run_validation_in_container(runtime, sandbox_dir, bounty_id)
 
-            parsed = json.loads(output)
-            if not parsed.get("success"):
-                _log(bounty_id, "sandbox", f"Container failed: {parsed.get('error')}", "error")
-                return parsed
+    fix_result["repo_path"] = str(sandbox_dir)
+    fix_result["branch_name"] = branch_name
+    fix_result["commit_sha"] = commit_sha
+    fix_result["diff_content"] = diff_content
+    fix_result["files_changed"] = files_changed
+    fix_result["validation"] = validation
+    fix_result["duration"] = gen_duration
 
-            # Step 4: Apply fix on host (fast native SSD)
-            _log(bounty_id, "sandbox", "Applying fix on host", "processing")
-            files_changed = parsed.get("files_changed", [])
-            applied = _apply_files(sandbox_dir, files_changed)
+    if validation.get("overall"):
+        _log(bounty_id, "sandbox", "Fix generated and validated successfully", "processing")
+    else:
+        failures = validation.get("failures", [])
+        _log(bounty_id, "sandbox", f"Validation failed: {'; '.join(failures[:3])}", "warning")
 
-            if not applied:
-                _log(bounty_id, "sandbox", "No files applied", "error")
-                return {"success": False, "error": "No files applied"}
-
-            # Step 5: Commit
-            branch_name = f"bounty-fix-{bounty_id}"
-            _run_git(sandbox_dir, ["checkout", "-b", branch_name])
-            _run_git(sandbox_dir, ["add", "."])
-            _run_git(sandbox_dir, ["commit", "-m", f"Fix bounty #{bounty_id}"])
-
-            commit_sha = _run_git(sandbox_dir, ["rev-parse", "HEAD"]).strip()
-            diff_content = _run_git(sandbox_dir, ["diff", "HEAD~1", "HEAD"])
-
-            # Step 6: Validate
-            validation = _validate_fix(sandbox_dir)
-
-            parsed["repo_path"] = str(sandbox_dir)
-            parsed["branch_name"] = branch_name
-            parsed["commit_sha"] = commit_sha
-            parsed["diff_content"] = diff_content
-            parsed["files_changed"] = files_changed
-            parsed["validation"] = validation
-            _log(bounty_id, "sandbox", "Container completed successfully", "processing")
-            return parsed
-
-        except subprocess.TimeoutExpired:
-            _log(bounty_id, "sandbox", f"Container timed out after {SANDBOX_TIMEOUT}s", "error")
-            return {"success": False, "error": "Container timed out"}
-        except json.JSONDecodeError as e:
-            _log(bounty_id, "sandbox", "Invalid JSON output", "error", str(e))
-            return {"success": False, "error": f"Invalid container output: {e}"}
-        except Exception as e:
-            _log(bounty_id, "sandbox", "Execution failed", "error", str(e))
-            return {"success": False, "error": str(e)}
-    finally:
-        try:
-            os.unlink(config_path)
-        except Exception:
-            pass
+    return fix_result
 
 
 def _run_git(cwd, args):
@@ -374,35 +544,6 @@ def _apply_files(sandbox_dir, files_changed):
         applied = True
 
     return applied
-
-
-def _validate_fix(sandbox_dir):
-    validation = {"install_ok": True, "tests_ok": True, "lint_ok": True, "failures": [], "overall": True}
-
-    install_cmd = _detect_install_command(sandbox_dir)
-    if install_cmd:
-        r = _run_cmd(install_cmd, sandbox_dir, timeout=120)
-        validation["install_ok"] = r["exit_code"] == 0
-        if not validation["install_ok"]:
-            validation["failures"].append(f"Install failed: {r['stderr'][:200]}")
-            validation["overall"] = False
-            return validation
-
-    test_cmd = _detect_test_command(sandbox_dir)
-    if test_cmd:
-        r = _run_cmd(test_cmd, sandbox_dir, timeout=120)
-        validation["tests_ok"] = r["exit_code"] == 0
-        if not validation["tests_ok"]:
-            for line in (r["stdout"] + r["stderr"]).splitlines():
-                lower = line.lower()
-                if any(kw in lower for kw in ["error", "failed", "expect", "exception", "assert"]):
-                    validation["failures"].append(line.strip())
-                    if len(validation["failures"]) >= 10:
-                        break
-            validation["overall"] = False
-
-    validation["overall"] = validation["install_ok"] and validation["tests_ok"]
-    return validation
 
 
 def _detect_install_command(sandbox_dir):
@@ -447,16 +588,6 @@ def _detect_test_command(sandbox_dir):
     if (sp / "go.mod").exists():
         return "go test ./..."
     return None
-
-
-def _run_cmd(cmd, cwd, timeout=120):
-    try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, shell=True)
-        return {"exit_code": r.returncode, "stdout": r.stdout, "stderr": r.stderr}
-    except subprocess.TimeoutExpired:
-        return {"exit_code": -1, "stdout": "", "stderr": "Command timed out"}
-    except Exception as e:
-        return {"exit_code": -1, "stdout": "", "stderr": str(e)}
 
 
 def cleanup_workspace(bounty_id: int) -> bool:

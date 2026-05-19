@@ -15,7 +15,7 @@ ollama:
     complex_agent: qwen2.5-coder:7b-instruct-q4_K_M
     code_reviewer: qwen2.5-coder:7b-instruct-q4_K_M
 sandbox:
-  enabled: false
+  enabled: true
   image: bounty-sandbox:latest
   memory: 2g
   cpus: '2'
