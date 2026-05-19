@@ -26,6 +26,7 @@ class TaskProcessor:
         self._queue = queue.Queue()
         self._status: Dict[str, Dict[str, Any]] = {}
         self._logs: Dict[str, list] = {}
+        self._cancelled: set = set()
         self._worker_thread = None
         self._running = False
         self._shutdown_event = threading.Event()
@@ -83,6 +84,18 @@ class TaskProcessor:
     def get_logs(self, task_id: str) -> list:
         return self._logs.get(task_id, [])
 
+    def cancel(self, task_id: str) -> bool:
+        """Cancel a task. If currently running, sets a flag to abort."""
+        task_id = str(task_id)
+        was_active = False
+        if task_id in self._status and self._status[task_id].get('status') in ('queued', 'processing'):
+            was_active = True
+        self._cancelled.add(task_id)
+        if task_id in self._status:
+            self._status[task_id]['status'] = 'cancelled'
+        logger.info(f"Task {task_id} cancelled")
+        return was_active
+
     def _log(self, task_id: str, step: str, detail: str = ''):
         entry = {
             'timestamp': datetime.utcnow().isoformat() + '+00:00',
@@ -113,6 +126,12 @@ class TaskProcessor:
             except queue.Empty:
                 continue
 
+            if task_id in self._cancelled:
+                self._cancelled.discard(task_id)
+                logger.info(f"Task {task_id} was cancelled, skipping")
+                self._queue.task_done()
+                continue
+
             try:
                 self._process_task(task_id, bounty_id, process_fn)
             except Exception as e:
@@ -125,6 +144,11 @@ class TaskProcessor:
             self._queue.task_done()
 
     def _process_task(self, task_id: str, bounty_id: int, process_fn):
+        if task_id in self._cancelled:
+            self._cancelled.discard(task_id)
+            logger.info(f"Task {task_id} cancelled before start")
+            return
+
         self._current_task_id = task_id
         self._update_progress(task_id, 5, 'Starting...')
         self._status[task_id]['status'] = 'processing'
@@ -154,6 +178,15 @@ class TaskProcessor:
 
         self._update_progress(task_id, 95, 'Queueing for review...')
         self._log(task_id, 'queue', 'Adding to review queue for human approval')
+
+        if task_id in self._cancelled:
+            self._cancelled.discard(task_id)
+            logger.info(f"Task {task_id} cancelled during processing")
+            self._status[task_id]['status'] = 'cancelled'
+            self._log(task_id, 'cancelled', 'Task was cancelled by user')
+            db.update_bounty_status(bounty_id, 'new')
+            self._current_task_id = None
+            return
 
         try:
             result = process_fn(bounty_id)

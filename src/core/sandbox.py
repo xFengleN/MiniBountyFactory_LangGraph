@@ -96,6 +96,30 @@ def kill_running_containers() -> int:
     return 0
 
 
+def kill_containers_for_bounty(bounty_id: int) -> int:
+    """Kill any running containers associated with a specific bounty."""
+    runtime = _detect_container_runtime()
+    if not runtime:
+        return 0
+
+    try:
+        result = subprocess.run(
+            [runtime, "ps", "--filter", f"name=bounty-{bounty_id}", "--format", "{{.ID}}"],
+            capture_output=True, text=True, timeout=10,
+        )
+        container_ids = [c.strip() for c in result.stdout.strip().split("\n") if c.strip()]
+        for cid in container_ids:
+            subprocess.run(
+                [runtime, "kill", cid],
+                capture_output=True, timeout=10,
+            )
+            logger.info(f"Killed container {cid} for bounty {bounty_id}")
+        return len(container_ids)
+    except Exception as e:
+        logger.warning(f"Failed to kill containers for bounty {bounty_id}: {e}")
+        return 0
+
+
 def _ensure_pip_cache_volume(runtime):
     try:
         result = subprocess.run(

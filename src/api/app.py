@@ -1996,16 +1996,31 @@ def reset_task_api(task_id):
     if not bounty:
         return jsonify({'error': 'Task not found'}), 404
 
-    db.update_bounty_status(task_id, 'new')
-    db.log_processing(task_id, 'system', 'reset', 'new', 'Task manually reset to new status')
+    # Cancel in task processor (sets flag to abort if currently running)
+    was_active = task_processor.cancel(str(task_id))
 
+    # Kill any running containers for this bounty
+    from ..core.sandbox import kill_containers_for_bounty
+    killed = kill_containers_for_bounty(task_id)
+
+    # Reset DB status
+    db.update_bounty_status(task_id, 'new')
+    db.log_processing(task_id, 'system', 'reset', 'new', f'Task manually reset to new (was_active={was_active}, killed={killed})')
+
+    # Clear in-memory status and logs
     task_id_str = str(task_id)
     if task_id_str in task_processor._status:
         del task_processor._status[task_id_str]
     if task_id_str in task_processor._logs:
         del task_processor._logs[task_id_str]
 
-    return jsonify({'success': True, 'message': 'Task reset to new'})
+    msg = 'Task reset to new'
+    if was_active:
+        msg += ' (was actively processing)'
+    if killed:
+        msg += f' (killed {killed} container(s))'
+
+    return jsonify({'success': True, 'message': msg})
 
 
 @app.route('/api/tasks/<int:task_id>/precheck', methods=['GET'])
