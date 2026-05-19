@@ -53,6 +53,9 @@ def serve_web_ui():
                             </button>
                             <button onclick="startSystem()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Start</button>
                             <button onclick="stopSystem()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">Stop</button>
+                            <button onclick="openSettings()" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded" title="Settings">
+                                <i class="fas fa-cog"></i>
+                            </button>
                             <button onclick="refreshAll()" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded">
                                 <i class="fas fa-sync"></i>
                             </button>
@@ -316,6 +319,107 @@ def serve_web_ui():
                         <pre id="reviewDetailContent" class="bg-gray-900 p-4 rounded text-xs font-mono whitespace-pre overflow-x-auto max-h-[70vh] overflow-y-auto"></pre>
                     </div>
                 </div>
+
+                <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+                    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold"><i class="fas fa-cog mr-2"></i>Settings</h3>
+                            <button onclick="closeSettings()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+                        </div>
+
+                        <div class="space-y-6">
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-box mr-1"></i> Sandbox</h4>
+                                <div class="flex items-center gap-3 bg-gray-900 p-3 rounded">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" id="cfgSandboxEnabled" class="accent-purple-500 w-4 h-4">
+                                        <span class="text-sm">Enable sandbox execution (Podman/Docker)</span>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">When disabled, agents run LLM calls directly on the host without container isolation.</p>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-brain mr-1"></i> Ollama Models</h4>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Classifier</label>
+                                        <input type="text" id="cfgModelClassifier" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Simple Agent</label>
+                                        <input type="text" id="cfgModelSimple" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Complex Agent</label>
+                                        <input type="text" id="cfgModelComplex" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Code Reviewer</label>
+                                        <input type="text" id="cfgModelReviewer" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <label class="block text-xs text-gray-400 mb-1">Base URL</label>
+                                    <input type="text" id="cfgOllamaUrl" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-code-branch mr-1"></i> Git</h4>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Username</label>
+                                        <input type="text" id="cfgGitUsername" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Token</label>
+                                        <input type="password" id="cfgGitToken" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-folder mr-1"></i> Workspace</h4>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Base Path</label>
+                                    <input type="text" id="cfgWorkspacePath" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-cloud mr-1"></i> OpenCode (Cloud)</h4>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">API Key</label>
+                                        <input type="password" id="cfgOpencodeKey" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Base URL</label>
+                                        <input type="text" id="cfgOpencodeUrl" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-flask mr-1"></i> Test Mode</h4>
+                                <div class="flex items-center gap-3 bg-gray-900 p-3 rounded">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" id="cfgTestMode" class="accent-purple-500 w-4 h-4">
+                                        <span class="text-sm">Enable test mode (free tasks only)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-700">
+                            <button onclick="closeSettings()" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button>
+                            <button onclick="saveSettings()" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm font-medium">
+                                <i class="fas fa-save mr-1"></i> Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </main>
         </div>
 
@@ -564,7 +668,7 @@ def serve_web_ui():
                     if (stats.sandbox) {
                         const s = stats.sandbox;
                         document.getElementById('sandboxStatus').innerHTML = s.available ? '<span class="text-green-400">✓ ' + s.runtime + '</span>' : '<span class="text-red-400">✗ Not available</span>';
-                        document.getElementById('sandboxImage').textContent = s.image_built ? 'Image: bounty-sandbox:latest' : 'Image: not built';
+                        document.getElementById('sandboxImage').textContent = (s.enabled ? '✓ Enabled' : '✗ Disabled') + (s.image_built ? ' | Image: bounty-sandbox:latest' : ' | Image: not built');
                     }
 
                     if (stats.today) {
@@ -600,6 +704,93 @@ def serve_web_ui():
             }
 
             function refreshAll() { refreshStatus(); loadTasks(); loadReviews(); }
+
+            async function openSettings() {
+                const modal = document.getElementById('settingsModal');
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+
+                try {
+                    const res = await fetch('/api/config');
+                    const cfg = await res.json();
+
+                    document.getElementById('cfgSandboxEnabled').checked = cfg.sandbox?.enabled !== false;
+                    document.getElementById('cfgModelClassifier').value = cfg.ollama_models?.classifier || '';
+                    document.getElementById('cfgModelSimple').value = cfg.ollama_models?.simple_agent || '';
+                    document.getElementById('cfgModelComplex').value = cfg.ollama_models?.complex_agent || '';
+                    document.getElementById('cfgModelReviewer').value = cfg.ollama_models?.code_reviewer || '';
+                    document.getElementById('cfgOllamaUrl').value = cfg.ollama_base_url || '';
+                    document.getElementById('cfgTestMode').checked = cfg.test_mode || false;
+                    document.getElementById('cfgGitUsername').value = cfg.git?.username || '';
+                    document.getElementById('cfgGitToken').value = cfg.git?.token || '';
+                    document.getElementById('cfgWorkspacePath').value = cfg.workspace?.base_path || '';
+                    document.getElementById('cfgOpencodeKey').value = cfg.opencode?.api_key || '';
+                    document.getElementById('cfgOpencodeUrl').value = cfg.opencode?.base_url || '';
+                } catch (e) {
+                    console.error('Failed to load config:', e);
+                }
+            }
+
+            function closeSettings() {
+                const modal = document.getElementById('settingsModal');
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+
+            async function saveSettings() {
+                const data = {
+                    sandbox: {
+                        enabled: document.getElementById('cfgSandboxEnabled').checked,
+                    },
+                    ollama: {
+                        models: {
+                            classifier: document.getElementById('cfgModelClassifier').value,
+                            simple_agent: document.getElementById('cfgModelSimple').value,
+                            complex_agent: document.getElementById('cfgModelComplex').value,
+                            code_reviewer: document.getElementById('cfgModelReviewer').value,
+                        },
+                    },
+                    test_mode: {
+                        enabled: document.getElementById('cfgTestMode').checked,
+                    },
+                };
+
+                const gitUsername = document.getElementById('cfgGitUsername').value;
+                const gitToken = document.getElementById('cfgGitToken').value;
+                if (gitUsername || gitToken) {
+                    data.git = {};
+                    if (gitUsername) data.git.username = gitUsername;
+                    if (gitToken) data.git.token = gitToken;
+                }
+
+                const workspacePath = document.getElementById('cfgWorkspacePath').value;
+                if (workspacePath) data.workspace = { base_path: workspacePath };
+
+                const opencodeKey = document.getElementById('cfgOpencodeKey').value;
+                const opencodeUrl = document.getElementById('cfgOpencodeUrl').value;
+                if (opencodeKey || opencodeUrl) {
+                    data.opencode = {};
+                    if (opencodeKey) data.opencode.api_key = opencodeKey;
+                    if (opencodeUrl) data.opencode.base_url = opencodeUrl;
+                }
+
+                try {
+                    const res = await fetch('/api/config', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        alert('Settings saved successfully. Some changes may require a restart.');
+                        closeSettings();
+                    } else {
+                        alert('Failed to save: ' + (result.error || 'Unknown error'));
+                    }
+                } catch (e) {
+                    alert('Failed to save settings: ' + e.message);
+                }
+            }
 
             function applyFilters() {
                 if (!window.allTasks) return;
@@ -1237,7 +1428,13 @@ def dashboard_stats():
             image_built = r.returncode == 0
         except Exception:
             pass
-    stats['sandbox'] = {'available': runtime is not None, 'runtime': runtime, 'image_built': image_built}
+    sandbox_enabled = config.get('sandbox', {}).get('enabled', True)
+    stats['sandbox'] = {
+        'available': runtime is not None,
+        'runtime': runtime,
+        'image_built': image_built,
+        'enabled': sandbox_enabled,
+    }
 
     # Today's stats from processing logs
     with db.get_connection() as conn:
@@ -1495,12 +1692,86 @@ def get_config():
     try:
         with open(config_path, 'r') as f:
             cfg = yaml.safe_load(f)
+        git_cfg = cfg.get('git', {})
+        token = git_cfg.get('token', '')
+        masked_token = token[:4] + '...' + token[-4:] if len(token) > 8 else ('****' if token and token != 'YOUR_GITHUB_TOKEN' else '')
+        opencode_cfg = cfg.get('opencode', {})
+        api_key = opencode_cfg.get('api_key', '')
+        masked_key = api_key[:4] + '...' + api_key[-4:] if len(api_key) > 8 else ('****' if api_key and api_key != 'YOUR_OPENCODE_API_KEY' else '')
         return jsonify({
-            'opencode': {'api_key_set': cfg.get('opencode', {}).get('api_key', '') != 'YOUR_OPENCODE_API_KEY'},
-            'git': {'configured': cfg.get('git', {}).get('username', '') != 'YOUR_GITHUB_USERNAME'},
+            'opencode': {
+                'api_key_set': api_key != 'YOUR_OPENCODE_API_KEY',
+                'api_key': masked_key,
+                'base_url': opencode_cfg.get('base_url', ''),
+            },
+            'git': {
+                'configured': git_cfg.get('username', '') != 'YOUR_GITHUB_USERNAME',
+                'username': git_cfg.get('username', ''),
+                'token': masked_token,
+            },
             'test_mode': cfg.get('test_mode', {}).get('enabled', False),
-            'ollama_models': cfg.get('ollama', {}).get('models', {})
+            'ollama_models': cfg.get('ollama', {}).get('models', {}),
+            'ollama_base_url': cfg.get('ollama', {}).get('base_url', ''),
+            'sandbox': cfg.get('sandbox', {}),
+            'workspace': cfg.get('workspace', {}),
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/config', methods=['POST'])
+def update_config():
+    import yaml
+    from ..core.config import config as app_config
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'config', 'config.yaml')
+    try:
+        with open(config_path, 'r') as f:
+            cfg = yaml.safe_load(f)
+
+        data = request.json
+
+        if 'test_mode' in data:
+            cfg['test_mode']['enabled'] = bool(data['test_mode'].get('enabled', cfg['test_mode'].get('enabled')))
+
+        if 'ollama' in data:
+            o = data['ollama']
+            if 'base_url' in o:
+                cfg['ollama']['base_url'] = o['base_url']
+            if 'models' in o:
+                for k, v in o['models'].items():
+                    if v:
+                        cfg['ollama']['models'][k] = v
+
+        if 'sandbox' in data:
+            s = data['sandbox']
+            if 'enabled' in s:
+                cfg['sandbox']['enabled'] = bool(s['enabled'])
+
+        if 'git' in data:
+            g = data['git']
+            if 'username' in g:
+                cfg['git']['username'] = g['username']
+            if 'token' in g:
+                cfg['git']['token'] = g['token']
+
+        if 'workspace' in data:
+            w = data['workspace']
+            if 'base_path' in w:
+                cfg['workspace']['base_path'] = w['base_path']
+
+        if 'opencode' in data:
+            oc = data['opencode']
+            if 'api_key' in oc:
+                cfg['opencode']['api_key'] = oc['api_key']
+            if 'base_url' in oc:
+                cfg['opencode']['base_url'] = oc['base_url']
+
+        app_config._config = cfg
+
+        with open(config_path, 'w') as f:
+            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

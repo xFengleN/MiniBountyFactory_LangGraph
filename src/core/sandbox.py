@@ -190,6 +190,12 @@ def run_sandbox_task(
     description = bounty.get("description", "")
     issue_url = bounty.get("issue_url", "")
 
+    sandbox_cfg = config.get("sandbox", {})
+    if not sandbox_cfg.get("enabled", True):
+        logger.info("Sandbox disabled in config, using local agent")
+        _log(bounty_id, "sandbox", "Sandbox disabled, using local agent", "warning")
+        return None
+
     runtime = _detect_container_runtime()
     if not runtime:
         logger.warning("No container runtime available (docker/podman), falling back to local execution")
