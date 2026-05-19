@@ -15,7 +15,7 @@ class GitHubScout:
         self.token = token or os.getenv('GITHUB_TOKEN')
         self.base_url = 'https://api.github.com'
 
-        if not self.token or self.token == 'YOUR_GITHUB_TOKEN':
+        if not self.token or self.token.startswith('YOUR') or self.token == 'YOUR_GITHUB_TOKEN':
             logger.info("GitHub token not configured - using unauthenticated API (60 req/hr limit)")
             self.headers = {'Accept': 'application/vnd.github.v3+json'}
         else:
