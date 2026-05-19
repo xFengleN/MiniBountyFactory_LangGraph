@@ -18,7 +18,7 @@ class CommentGenerator:
 
         parts = []
 
-        parts.append(f"Hey! I'd like to take a shot at this — looks like a good fit.")
+        parts.append(f"Hi! I'd like to work on this — looks like a good fit for my skills and interests.")
         parts.append("")
 
         if check_result and check_result.get('contributing_rules'):
@@ -48,7 +48,7 @@ class CommentGenerator:
         title = bounty.get('title', '')
 
         templates = {
-            'pr_submitted': f"Just opened a PR for this. Take a look when you get a chance!",
+            'pr_submitted': f"Just opened a PR for this. Please have a look when you get a chance!",
             'fix_failed': f"Ran into some trouble putting together a fix — might need a bit more context on this one.",
             'validation_failed': f"Got a fix together but it didn't pass the test suite. Might need another look at the requirements.",
         }
