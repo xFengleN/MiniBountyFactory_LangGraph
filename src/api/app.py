@@ -1670,6 +1670,29 @@ def stop_orchestrator():
     return jsonify({'success': True, 'message': 'Orchestrator stopped'})
 
 
+@app.route('/api/scan', methods=['POST'])
+def scan_tasks():
+    if not orchestrator:
+        return jsonify({'error': 'Orchestrator not initialized'}), 500
+
+    data = request.get_json() or {}
+    test_mode = data.get('test_mode', True)
+    min_price = data.get('min_price', 0)
+    max_price = data.get('max_price', 0)
+    limit = data.get('limit', 10)
+    query = data.get('query')
+
+    count = orchestrator.manual_scan(
+        test_mode=test_mode,
+        query=query,
+        limit=limit,
+        min_price=min_price,
+        max_price=max_price
+    )
+
+    return jsonify({'success': True, 'tasks_found': count})
+
+
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
     bounties = db.get_all_bounties()
