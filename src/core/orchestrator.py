@@ -242,8 +242,12 @@ class BountyFactoryOrchestrator:
                 else:
                     queries = config.get('test_mode.github_queries', [])
                     issues = []
+                    per_query = max(1, limit // len(queries)) if queries else limit
                     for q in queries:
-                        issues.extend(self.github_scout.search_issues(query=q, limit=limit))
+                        issues.extend(self.github_scout.search_issues(query=q, limit=per_query))
+                        if len(issues) >= limit:
+                            break
+                    issues = issues[:limit]
                 count = self.github_scout.store_issues(issues)
         else:
             algora_bounties = self.algora_client.fetch_bounties(limit=limit)
