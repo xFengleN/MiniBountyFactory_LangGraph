@@ -203,6 +203,13 @@ def serve_web_ui():
                     </div>
 
                     <div id="panel-processing" class="p-4 hidden">
+                        <div class="flex items-end gap-2 mb-4 pb-3 border-b border-gray-700">
+                            <div class="ml-auto">
+                                <button onclick="resetAllProcessing()" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-1.5 rounded text-sm">
+                                    <i class="fas fa-undo mr-1"></i> Reset All Stuck
+                                </button>
+                            </div>
+                        </div>
                         <div id="processingList" class="space-y-3">
                             <div class="text-gray-400">No tasks currently processing</div>
                         </div>
@@ -968,6 +975,7 @@ def serve_web_ui():
                             <div class="flex gap-2 ml-2 shrink-0">
                                 ${isUntouched(t) ? `<button onclick="processTask(${t.id})" class="bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded text-sm font-medium"><i class="fas fa-play mr-1"></i> Process</button>` : ''}
                                 ${isProcessing(t) ? `<button onclick="showProcessingModal(${t.id})" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-1.5 rounded text-sm font-medium"><i class="fas fa-spinner fa-spin mr-1"></i> Processing</button>` : ''}
+                                ${isProcessing(t) ? `<button onclick="resetTask(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm" title="Reset to New"><i class="fas fa-undo"></i></button>` : ''}
                                 ${isFailed(t) ? `<button onclick="retryTask(${t.id})" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-sm font-medium"><i class="fas fa-redo mr-1"></i> Retry</button>` : ''}
                                 ${!isUntouched(t) ? `<button onclick="deleteTaskWorkspace(${t.id})" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm" title="Delete Local Files"><i class="fas fa-trash"></i></button>` : ''}
                                 <button onclick="viewTaskLogs(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm" title="View Logs"><i class="fas fa-terminal"></i></button>
@@ -1387,6 +1395,39 @@ def serve_web_ui():
                     }
                 }
                 alert(`Retried ${successCount} of ${failedIds.length} task(s)`);
+                loadTasks();
+            }
+
+            async function resetTask(taskId) {
+                if (!confirm('Reset this task back to "new" status?')) return;
+                try {
+                    const res = await fetch('/api/tasks/' + taskId + '/reset', { method: 'POST' });
+                    const data = await res.json();
+                    alert(data.message || 'Task reset');
+                    loadTasks();
+                } catch (e) {
+                    alert('Reset failed: ' + e.message);
+                }
+            }
+
+            async function resetAllProcessing() {
+                const processing = window.allTasks.filter(t => t.processing_status === 'processing');
+                if (processing.length === 0) {
+                    alert('No processing tasks to reset');
+                    return;
+                }
+                if (!confirm(`Reset ${processing.length} stuck task(s) back to "new"?`)) return;
+                let count = 0;
+                for (const t of processing) {
+                    try {
+                        const res = await fetch('/api/tasks/' + t.id + '/reset', { method: 'POST' });
+                        const data = await res.json();
+                        if (data.success) count++;
+                    } catch (e) {
+                        console.error('Reset failed for task', t.id, e);
+                    }
+                }
+                alert(`Reset ${count} of ${processing.length} task(s)`);
                 loadTasks();
             }
 
@@ -1947,6 +1988,24 @@ def retry_task(task_id):
     
     result = orchestrator.process_single_bounty(task_id)
     return jsonify({'success': True, 'message': 'Task restarted', 'auto_started': True})
+
+
+@app.route('/api/tasks/<int:task_id>/reset', methods=['POST'])
+def reset_task_api(task_id):
+    bounty = db.get_bounty_by_id(task_id)
+    if not bounty:
+        return jsonify({'error': 'Task not found'}), 404
+
+    db.update_bounty_status(task_id, 'new')
+    db.log_processing(task_id, 'system', 'reset', 'new', 'Task manually reset to new status')
+
+    task_id_str = str(task_id)
+    if task_id_str in task_processor._status:
+        del task_processor._status[task_id_str]
+    if task_id_str in task_processor._logs:
+        del task_processor._logs[task_id_str]
+
+    return jsonify({'success': True, 'message': 'Task reset to new'})
 
 
 @app.route('/api/tasks/<int:task_id>/precheck', methods=['GET'])
