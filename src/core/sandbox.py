@@ -123,6 +123,8 @@ def _clone_repo(repo_url, sandbox_dir, token=None):
         ["git", "clone", "--depth", "1", repo_url, str(sandbox_dir)],
         capture_output=True, text=True, timeout=180
     )
+    if result.returncode != 0:
+        logger.error(f"Git clone failed for {repo_url}: {result.stderr.strip()}")
     return result.returncode == 0
 
 

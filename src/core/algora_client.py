@@ -42,6 +42,15 @@ class AlgoraClient:
 
                 price = self._parse_price(reward)
 
+                issue_url = task.get('url', '')
+                # Extract repo URL from issue URL
+                # e.g. https://github.com/org/repo/issues/123 -> https://github.com/org/repo
+                repo_url = issue_url
+                if 'github.com' in issue_url:
+                    parts = issue_url.rstrip('/').split('/')
+                    if len(parts) >= 5:
+                        repo_url = '/'.join(parts[:5])
+
                 bounty = {
                     'id': f'algora-{item.get("id")}',
                     'title': task.get('title', ''),
@@ -49,9 +58,9 @@ class AlgoraClient:
                     'price': price,
                     'currency': 'USD',
                     'difficulty': self._estimate_difficulty(task),
-                    'repository_url': task.get('url', ''),
+                    'repository_url': repo_url,
                     'repository_name': task.get('repo_name', ''),
-                    'issue_url': task.get('url', ''),
+                    'issue_url': issue_url,
                     'tags': ','.join(task.get('tech', [])),
                     'created_at': item.get('created_at'),
                     'github_score': 0,
