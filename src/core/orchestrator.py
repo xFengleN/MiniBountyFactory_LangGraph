@@ -268,17 +268,18 @@ class BountyFactoryOrchestrator:
             count = self.github_scout.store_issues(algora_bounties)
 
             if self.github_scout.is_available():
-                if query:
-                    gh_issues = self.github_scout.search_issues(query=query, limit=limit)
-                else:
-                    bounty_queries = [
-                        'label:"bounty" state:open',
-                        'label:"bug bounty" state:open',
-                        'label:"reward" state:open',
-                    ]
-                    gh_issues = []
-                    for q in bounty_queries:
-                        gh_issues.extend(self.github_scout.search_issues(query=q, limit=limit))
+                bounty_queries = [
+                    'label:"bounty" state:open',
+                    'label:"bug bounty" state:open',
+                    'label:"reward" state:open',
+                ]
+                gh_issues = []
+                per_query = max(1, limit // len(bounty_queries))
+                for q in bounty_queries:
+                    gh_issues.extend(self.github_scout.search_issues(query=q, limit=per_query))
+                    if len(gh_issues) >= limit:
+                        break
+                gh_issues = gh_issues[:limit]
 
                 if min_price > 0 or max_price > 0:
                     filtered = []
