@@ -112,6 +112,17 @@ def serve_web_ui():
                             <div id="qvReview" class="cursor-pointer hover:text-purple-400" onclick="switchTab('queued_for_review')">Review: <span class="font-bold text-purple-400">-</span></div>
                         </div>
                     </div>
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <div class="text-gray-400 text-sm">System Resources</div>
+                        <div class="mt-1 space-y-0.5 text-xs">
+                            <div id="sysCpu">CPU: -</div>
+                            <div id="sysRam">RAM: -</div>
+                            <div id="sysDisk">Disk: -</div>
+                            <div id="sysOllamaModels" class="text-gray-500">Models: -</div>
+                            <div id="sysContainers">Containers: -</div>
+                            <div id="sysAgents" class="text-purple-400">Agents: -</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="bg-gray-800 rounded-lg mb-6">
@@ -739,6 +750,36 @@ def serve_web_ui():
                         document.getElementById('qvNew').innerHTML = 'New: <span class="font-bold text-blue-400">' + tb.new + '</span>';
                         document.getElementById('qvFailed').innerHTML = 'Failed: <span class="font-bold text-red-400">' + tb.failed + '</span>';
                         document.getElementById('qvReview').innerHTML = 'Review: <span class="font-bold text-purple-400">' + tb.queued_for_review + '</span>';
+                    }
+
+                    if (stats.system && stats.system.available !== false) {
+                        const s = stats.system;
+                        document.getElementById('sysCpu').textContent = 'CPU: ' + s.cpu_percent.toFixed(0) + '%';
+                        document.getElementById('sysRam').textContent = 'RAM: ' + (s.ram_used / 1073741824).toFixed(1) + '/' + (s.ram_total / 1073741824).toFixed(1) + ' GB (' + s.ram_percent + '%)';
+                        document.getElementById('sysDisk').textContent = 'Disk: ' + (s.disk_used / 1073741824).toFixed(0) + '/' + (s.disk_total / 1073741824).toFixed(0) + ' GB (' + s.disk_percent + '%)';
+                    }
+
+                    if (stats.ollama_loaded) {
+                        const models = stats.ollama_loaded;
+                        if (models.length === 0) {
+                            document.getElementById('sysOllamaModels').textContent = 'Models: none loaded';
+                        } else {
+                            document.getElementById('sysOllamaModels').textContent = 'Models: ' + models.map(m => m.name).join(', ');
+                        }
+                    }
+
+                    if (stats.containers !== undefined) {
+                        const c = stats.containers;
+                        document.getElementById('sysContainers').textContent = 'Containers: ' + c.length + ' running';
+                    }
+
+                    if (stats.active_agents) {
+                        const agents = stats.active_agents;
+                        if (agents.length === 0) {
+                            document.getElementById('sysAgents').textContent = 'Agents: idle';
+                        } else {
+                            document.getElementById('sysAgents').textContent = 'Agents: ' + agents.map(a => '#' + a.task_id + ' (' + (a.step || 'processing') + ')').join(', ');
+                        }
                     }
                 } catch (e) { console.error('Status refresh failed:', e); }
             }
@@ -1580,6 +1621,64 @@ def dashboard_stats():
             'failed': failed_count,
             'queued_for_review': review_count,
         }
+
+    # System resources
+    try:
+        import psutil
+        stats['system'] = {
+            'cpu_percent': psutil.cpu_percent(interval=0.1),
+            'ram_used': psutil.virtual_memory().used,
+            'ram_total': psutil.virtual_memory().total,
+            'ram_percent': psutil.virtual_memory().percent,
+            'disk_used': psutil.disk_usage('/').used,
+            'disk_total': psutil.disk_usage('/').total,
+            'disk_percent': psutil.disk_usage('/').percent,
+        }
+    except ImportError:
+        stats['system'] = {'available': False}
+
+    # Ollama loaded models
+    try:
+        resp = subprocess.run(
+            ['curl', '-s', 'http://localhost:11434/api/ps'],
+            capture_output=True, text=True, timeout=5
+        )
+        if resp.returncode == 0:
+            import json as _json
+            data = _json.loads(resp.stdout)
+            models = []
+            for m in data.get('models', []):
+                name = m.get('name', '')
+                size = m.get('size_vram', 0)
+                models.append({'name': name, 'size_vram': size})
+            stats['ollama_loaded'] = models
+        else:
+            stats['ollama_loaded'] = []
+    except Exception:
+        stats['ollama_loaded'] = []
+
+    # Running containers
+    if runtime:
+        try:
+            r = subprocess.run([runtime, 'ps', '--format', '{{.Names}}'],
+                               capture_output=True, text=True, timeout=5)
+            containers = [c.strip() for c in r.stdout.strip().split('\n') if c.strip()]
+            stats['containers'] = containers
+        except Exception:
+            stats['containers'] = []
+    else:
+        stats['containers'] = []
+
+    # Active agents from task processor
+    active = task_processor.get_active_tasks()
+    agents_info = []
+    for tid, tstatus in active.items():
+        step = tstatus.get('step', '')
+        agents_info.append({
+            'task_id': tid,
+            'step': step,
+        })
+    stats['active_agents'] = agents_info
 
     return jsonify(stats)
 
