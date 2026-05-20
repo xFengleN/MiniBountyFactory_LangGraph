@@ -743,7 +743,14 @@ def serve_web_ui():
 
                     if (stats.ollama_loaded) {
                         const models = stats.ollama_loaded;
-                        document.getElementById('sysOllamaModels').textContent = models.length === 0 ? 'idle' : models.map(m => m.name).join(', ');
+                        if (models.length === 0) {
+                            document.getElementById('sysOllamaModels').innerHTML = 'idle';
+                        } else {
+                            document.getElementById('sysOllamaModels').innerHTML = models.map(m =>
+                                '<span class="text-purple-300">' + m.name.split(':')[0] + '</span> ' +
+                                '<span class="text-gray-500">(' + m.size_gb.toFixed(1) + 'GB, ' + m.processor + ', ' + (m.context/1024).toFixed(0) + 'k ctx)</span>'
+                            ).join('<br>');
+                        }
                     }
 
                     if (stats.containers !== undefined) {
@@ -1646,8 +1653,17 @@ def dashboard_stats():
             models = []
             for m in data.get('models', []):
                 name = m.get('name', '')
-                size = m.get('size_vram', 0)
-                models.append({'name': name, 'size_vram': size})
+                size = m.get('size_vram', 0) or m.get('size', 0)
+                ctx = m.get('context_length', 0)
+                # If size_vram == size, it's fully in VRAM (GPU)
+                processor = 'GPU' if size == m.get('size', 0) else 'CPU'
+                models.append({
+                    'name': name,
+                    'size': size,
+                    'size_gb': size / 1073741824,
+                    'processor': processor,
+                    'context': ctx,
+                })
             stats['ollama_loaded'] = models
         else:
             stats['ollama_loaded'] = []
