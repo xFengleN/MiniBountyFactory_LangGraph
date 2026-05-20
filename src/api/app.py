@@ -756,10 +756,13 @@ def serve_web_ui():
                         if (models.length === 0) {
                             document.getElementById('sysOllamaModels').innerHTML = 'idle';
                         } else {
-                            document.getElementById('sysOllamaModels').innerHTML = models.map(m =>
-                                '<span class="text-purple-300">' + m.name.split(':')[0] + ' (' + m.param_size + ')</span> ' +
-                                '<span class="text-gray-500">(' + m.size_gb.toFixed(1) + 'GB, ' + m.processor + ', ' + (m.context/1024).toFixed(0) + 'k ctx)</span>'
-                            ).join('<br>');
+                            document.getElementById('sysOllamaModels').innerHTML = models.map(m => {
+                                const parts = m.name.split(':');
+                                const tag = parts[1] ? parts[1].split('-')[0] : '';
+                                const displayName = parts[0] + (tag ? ':' + tag : '');
+                                return '<span class="text-purple-300">' + displayName + '</span> ' +
+                                       '<span class="text-gray-500">(' + m.size_gb.toFixed(1) + 'GB, ' + m.processor + ', ' + (m.context/1024).toFixed(0) + 'k ctx)</span>';
+                            }).join('<br>');
                         }
                     }
 

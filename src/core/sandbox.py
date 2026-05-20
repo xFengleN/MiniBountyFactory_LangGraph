@@ -207,15 +207,23 @@ def _generate_fix_on_host(
     llm_structured = llm_raw.with_structured_output(FixOutput)
 
     all_files = []
+    total_tokens = {"prompt": 0, "completion": 0}
 
     def _invoke_with_fallback(prompt: str) -> Optional[TypingList[Dict]]:
+        nonlocal total_tokens
         try:
             fix_result: FixOutput = llm_structured.invoke(prompt)
+            meta = getattr(fix_result, 'response_metadata', {}) if hasattr(fix_result, 'response_metadata') else {}
+            total_tokens["prompt"] += meta.get("prompt_eval_count", 0)
+            total_tokens["completion"] += meta.get("eval_count", 0)
             return [f.model_dump() for f in fix_result.files]
         except Exception as e:
             logger.warning(f"Structured output failed, trying raw JSON parse: {e}")
             try:
                 raw_response = llm_raw.invoke(prompt)
+                meta = getattr(raw_response, 'response_metadata', {})
+                total_tokens["prompt"] += meta.get("prompt_eval_count", 0)
+                total_tokens["completion"] += meta.get("eval_count", 0)
                 content = raw_response.content if hasattr(raw_response, 'content') else str(raw_response)
                 import re
                 json_match = re.search(r'\{[\s\S]*"files"[\s\S]*\}', content)
@@ -306,6 +314,11 @@ Generate the fix."""
         "agent_type": agent_type,
         "files_changed": all_files,
         "model_used": model,
+        "token_stats": {
+            "prompt_tokens": total_tokens["prompt"],
+            "completion_tokens": total_tokens["completion"],
+            "total_tokens": total_tokens["prompt"] + total_tokens["completion"],
+        },
     }
 
 
