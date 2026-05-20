@@ -1445,7 +1445,7 @@ def serve_web_ui():
             }
 
             async function clearAllUntouched() {
-                if (!confirm('Delete all untouched (new/pending) tasks? This cannot be undone.')) return;
+                if (!confirm('Delete all untouched (new/pending) tasks and their workspace files? This cannot be undone.')) return;
                 const res = await fetch('/api/tasks/clear-untouched', { method: 'POST' });
                 const data = await res.json();
                 alert(`Cleared ${data.deleted} task(s)`);
@@ -2280,8 +2280,37 @@ def task_logs(task_id):
 
 @app.route('/api/tasks/clear-untouched', methods=['POST'])
 def clear_untouched_tasks():
-    deleted = db.cleanup_stale_tasks(days=0)
-    return jsonify({'success': True, 'deleted': deleted})
+    from ..core.sandbox import cleanup_workspace
+    from pathlib import Path
+    from ..core.config import config
+
+    # Get all untouched tasks first
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM bounties WHERE processing_status IN ('new', 'pending')")
+        untouched_ids = [row[0] for row in cursor.fetchall()]
+
+    deleted_count = 0
+    for task_id in untouched_ids:
+        # Delete workspace files
+        cleanup_workspace(task_id)
+
+        # Delete from database
+        with db.get_connection() as conn:
+            conn.cursor().execute("DELETE FROM bounties WHERE id = ?", (task_id,))
+            conn.cursor().execute("DELETE FROM processing_logs WHERE bounty_id = ?", (task_id,))
+            conn.commit()
+
+        # Clear in-memory state
+        task_id_str = str(task_id)
+        if task_id_str in task_processor._status:
+            del task_processor._status[task_id_str]
+        if task_id_str in task_processor._logs:
+            del task_processor._logs[task_id_str]
+
+        deleted_count += 1
+
+    return jsonify({'success': True, 'deleted': deleted_count})
 
 
 def run_server(port: int = 5000, debug: bool = False, return_app: bool = False):
