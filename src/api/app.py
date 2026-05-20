@@ -51,8 +51,14 @@ def serve_web_ui():
                             <button onclick="openScanModal()" id="scanBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded">
                                 <i class="fas fa-search mr-1"></i> Scan Tasks
                             </button>
-                            <button onclick="startSystem()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Start</button>
-                            <button onclick="stopSystem()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">Stop</button>
+                            <button onclick="toggleSystem()" id="systemToggle" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded flex items-center gap-2">
+                                <span id="systemToggleDot" class="status-dot red"></span>
+                                <span id="systemToggleText">Start</span>
+                            </button>
+                            <button onclick="toggleSandbox()" id="sandboxToggle" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded flex items-center gap-2">
+                                <span id="sandboxToggleDot" class="status-dot yellow"></span>
+                                <span id="sandboxToggleText">Sandbox</span>
+                            </button>
                             <button onclick="openSettings()" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded" title="Settings">
                                 <i class="fas fa-cog"></i>
                             </button>
@@ -65,62 +71,44 @@ def serve_web_ui():
             </nav>
 
             <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                <div class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
-                    <div class="bg-gray-800 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm">System Status</div>
-                        <div class="flex items-center mt-2">
-                            <span id="systemStatus" class="status-dot yellow"></span>
-                            <span id="systemStatusText" class="ml-2">Loading...</span>
+                <div class="bg-gray-800 rounded-lg p-4 mb-6">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-6">
+                            <div>
+                                <div class="text-gray-400 text-xs uppercase tracking-wide">CPU</div>
+                                <div id="sysCpu" class="text-lg font-mono font-bold">-</div>
+                            </div>
+                            <div class="h-8 w-px bg-gray-700"></div>
+                            <div>
+                                <div class="text-gray-400 text-xs uppercase tracking-wide">RAM</div>
+                                <div id="sysRam" class="text-lg font-mono font-bold">-</div>
+                            </div>
+                            <div class="h-8 w-px bg-gray-700"></div>
+                            <div>
+                                <div class="text-gray-400 text-xs uppercase tracking-wide">Disk</div>
+                                <div id="sysDisk" class="text-lg font-mono font-bold">-</div>
+                            </div>
+                            <div class="h-8 w-px bg-gray-700"></div>
+                            <div>
+                                <div class="text-gray-400 text-xs uppercase tracking-wide">Uptime</div>
+                                <div id="uptimeText" class="text-lg font-mono font-bold">-</div>
+                            </div>
                         </div>
-                        <div class="mt-2 text-xs text-gray-500">Uptime: <span id="uptimeText">-</span></div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm">Ollama</div>
-                        <div class="mt-1 space-y-0.5 text-sm">
-                            <div id="ollamaStatus">Loading...</div>
-                            <div id="ollamaModel" class="text-xs text-gray-500"></div>
-                        </div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm">Sandbox</div>
-                        <div class="mt-1 space-y-0.5 text-sm">
-                            <div id="sandboxStatus">Loading...</div>
-                            <div id="sandboxImage" class="text-xs text-gray-500"></div>
-                        </div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm">Today's Stats</div>
-                        <div class="mt-1 space-y-0.5 text-sm">
-                            <div id="todayProcessed">Processed: -</div>
-                            <div id="todaySuccess">Success: -</div>
-                            <div id="todayAvgTime">Avg time: -</div>
-                        </div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm">Database</div>
-                        <div class="mt-1 space-y-0.5 text-sm">
-                            <div id="dbTotalBounties">Bounties: -</div>
-                            <div id="dbTotalReviews">Reviews: -</div>
-                            <div id="dbSize" class="text-xs text-gray-500"></div>
-                        </div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm">Quick View</div>
-                        <div class="mt-1 space-y-0.5 text-sm">
-                            <div id="qvNew" class="cursor-pointer hover:text-blue-400" onclick="switchTab('new')">New: <span class="font-bold text-blue-400">-</span></div>
-                            <div id="qvFailed" class="cursor-pointer hover:text-red-400" onclick="switchTab('failed')">Failed: <span class="font-bold text-red-400">-</span></div>
-                            <div id="qvReview" class="cursor-pointer hover:text-purple-400" onclick="switchTab('queued_for_review')">Review: <span class="font-bold text-purple-400">-</span></div>
-                        </div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm">System Resources</div>
-                        <div class="mt-1 space-y-0.5 text-xs">
-                            <div id="sysCpu">CPU: -</div>
-                            <div id="sysRam">RAM: -</div>
-                            <div id="sysDisk">Disk: -</div>
-                            <div id="sysOllamaModels" class="text-gray-500">Models: -</div>
-                            <div id="sysContainers">Containers: -</div>
-                            <div id="sysAgents" class="text-purple-400">Agents: -</div>
+                        <div class="flex items-center gap-6 text-xs">
+                            <div>
+                                <div class="text-gray-400 uppercase tracking-wide">Ollama</div>
+                                <div id="sysOllamaModels" class="text-gray-300 mt-0.5">-</div>
+                            </div>
+                            <div class="h-8 w-px bg-gray-700"></div>
+                            <div>
+                                <div class="text-gray-400 uppercase tracking-wide">Containers</div>
+                                <div id="sysContainers" class="text-gray-300 mt-0.5">-</div>
+                            </div>
+                            <div class="h-8 w-px bg-gray-700"></div>
+                            <div>
+                                <div class="text-gray-400 uppercase tracking-wide">Agents</div>
+                                <div id="sysAgents" class="text-purple-400 mt-0.5">-</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -713,73 +701,59 @@ def serve_web_ui():
                     const status = await statusRes.json();
                     const stats = await statsRes.json();
 
-                    document.getElementById('systemStatus').className = 'status-dot ' + (status.running ? 'green' : 'red');
-                    document.getElementById('systemStatusText').textContent = status.running ? 'Running' : 'Stopped';
-                    if (stats.uptime) {
-                        document.getElementById('uptimeText').textContent = stats.uptime;
-                    }
-
-                    if (stats.ollama) {
-                        const o = stats.ollama;
-                        document.getElementById('ollamaStatus').innerHTML = o.running ? '<span class="text-green-400">✓ Running</span>' : '<span class="text-red-400">✗ Not running</span>';
-                        document.getElementById('ollamaModel').textContent = o.models ? o.models.join(', ') : '';
+                    const toggleDot = document.getElementById('systemToggleDot');
+                    const toggleText = document.getElementById('systemToggleText');
+                    const toggleBtn = document.getElementById('systemToggle');
+                    if (status.running) {
+                        toggleDot.className = 'status-dot green';
+                        toggleText.textContent = 'Running';
+                        toggleBtn.className = 'bg-green-700 hover:bg-green-600 px-4 py-2 rounded flex items-center gap-2';
+                    } else {
+                        toggleDot.className = 'status-dot red';
+                        toggleText.textContent = 'Start';
+                        toggleBtn.className = 'bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded flex items-center gap-2';
                     }
 
                     if (stats.sandbox) {
                         const s = stats.sandbox;
-                        document.getElementById('sandboxStatus').innerHTML = s.available ? '<span class="text-green-400">✓ ' + s.runtime + '</span>' : '<span class="text-red-400">✗ Not available</span>';
-                        document.getElementById('sandboxImage').textContent = (s.enabled ? '✓ Enabled' : '✗ Disabled') + (s.image_built ? ' | Image: bounty-sandbox:latest' : ' | Image: not built');
+                        const sDot = document.getElementById('sandboxToggleDot');
+                        const sText = document.getElementById('sandboxToggleText');
+                        const sBtn = document.getElementById('sandboxToggle');
+                        if (s.enabled) {
+                            sDot.className = 'status-dot green';
+                            sText.textContent = 'Sandbox';
+                            sBtn.className = 'bg-green-700 hover:bg-green-600 px-4 py-2 rounded flex items-center gap-2';
+                        } else {
+                            sDot.className = 'status-dot yellow';
+                            sText.textContent = 'Sandbox Off';
+                            sBtn.className = 'bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded flex items-center gap-2';
+                        }
                     }
 
-                    if (stats.today) {
-                        const t = stats.today;
-                        document.getElementById('todayProcessed').textContent = 'Processed: ' + t.processed;
-                        document.getElementById('todaySuccess').textContent = 'Success: ' + t.success + ' (' + (t.processed > 0 ? Math.round(t.success / t.processed * 100) : 0) + '%)';
-                        document.getElementById('todayAvgTime').textContent = 'Avg time: ' + (t.avg_duration ? t.avg_duration.toFixed(0) + 's' : '-');
-                    }
-
-                    if (stats.db) {
-                        const d = stats.db;
-                        document.getElementById('dbTotalBounties').textContent = 'Bounties: ' + d.total_bounties;
-                        document.getElementById('dbTotalReviews').textContent = 'Reviews: ' + d.total_reviews;
-                        document.getElementById('dbSize').textContent = d.db_size ? (d.db_size / 1024).toFixed(1) + ' KB' : '';
-                    }
-
-                    if (stats.tabs) {
-                        const tb = stats.tabs;
-                        document.getElementById('qvNew').innerHTML = 'New: <span class="font-bold text-blue-400">' + tb.new + '</span>';
-                        document.getElementById('qvFailed').innerHTML = 'Failed: <span class="font-bold text-red-400">' + tb.failed + '</span>';
-                        document.getElementById('qvReview').innerHTML = 'Review: <span class="font-bold text-purple-400">' + tb.queued_for_review + '</span>';
+                    if (stats.uptime) {
+                        document.getElementById('uptimeText').textContent = stats.uptime;
                     }
 
                     if (stats.system && stats.system.available !== false) {
                         const s = stats.system;
-                        document.getElementById('sysCpu').textContent = 'CPU: ' + s.cpu_percent.toFixed(0) + '%';
-                        document.getElementById('sysRam').textContent = 'RAM: ' + (s.ram_used / 1073741824).toFixed(1) + '/' + (s.ram_total / 1073741824).toFixed(1) + ' GB (' + s.ram_percent + '%)';
-                        document.getElementById('sysDisk').textContent = 'Disk: ' + (s.disk_used / 1073741824).toFixed(0) + '/' + (s.disk_total / 1073741824).toFixed(0) + ' GB (' + s.disk_percent + '%)';
+                        document.getElementById('sysCpu').textContent = s.cpu_percent.toFixed(0) + '%';
+                        document.getElementById('sysRam').textContent = (s.ram_used / 1073741824).toFixed(1) + ' GB';
+                        document.getElementById('sysDisk').textContent = (s.disk_used / 1073741824).toFixed(0) + ' GB';
                     }
 
                     if (stats.ollama_loaded) {
                         const models = stats.ollama_loaded;
-                        if (models.length === 0) {
-                            document.getElementById('sysOllamaModels').textContent = 'Models: none loaded';
-                        } else {
-                            document.getElementById('sysOllamaModels').textContent = 'Models: ' + models.map(m => m.name).join(', ');
-                        }
+                        document.getElementById('sysOllamaModels').textContent = models.length === 0 ? 'idle' : models.map(m => m.name).join(', ');
                     }
 
                     if (stats.containers !== undefined) {
                         const c = stats.containers;
-                        document.getElementById('sysContainers').textContent = 'Containers: ' + c.length + ' running';
+                        document.getElementById('sysContainers').textContent = c.length === 0 ? 'none' : c.length + ' running';
                     }
 
                     if (stats.active_agents) {
                         const agents = stats.active_agents;
-                        if (agents.length === 0) {
-                            document.getElementById('sysAgents').textContent = 'Agents: idle';
-                        } else {
-                            document.getElementById('sysAgents').textContent = 'Agents: ' + agents.map(a => '#' + a.task_id + ' (' + (a.step || 'processing') + ')').join(', ');
-                        }
+                        document.getElementById('sysAgents').textContent = agents.length === 0 ? 'idle' : agents.map(a => '#' + a.task_id).join(', ');
                     }
                 } catch (e) { console.error('Status refresh failed:', e); }
             }
@@ -794,6 +768,29 @@ def serve_web_ui():
             }
 
             function refreshAll() { refreshStatus(); loadTasks(); loadReviews(); }
+
+            async function toggleSystem() {
+                const statusRes = await fetch('/api/status');
+                const status = await statusRes.json();
+                if (status.running) {
+                    await fetch('/api/stop', {method: 'POST'});
+                } else {
+                    await fetch('/api/start', {method: 'POST'});
+                }
+                refreshStatus();
+            }
+
+            async function toggleSandbox() {
+                const res = await fetch('/api/config');
+                const cfg = await res.json();
+                const current = cfg.sandbox?.enabled !== false;
+                await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ sandbox: { enabled: !current } })
+                });
+                refreshStatus();
+            }
 
             async function openSettings() {
                 const modal = document.getElementById('settingsModal');
