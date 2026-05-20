@@ -1332,7 +1332,7 @@ def serve_web_ui():
                     } catch (e) {
                         console.error('Poll failed:', e);
                     }
-                }, 15000);
+                }, 3000);
             }
 
             async function approveReview(id) {
@@ -1472,7 +1472,7 @@ def serve_web_ui():
                 loadTasks();
             }
 
-            setInterval(refreshAll, 15000);
+            setInterval(refreshAll, 3000);
             refreshAll();
         </script>
     </body>
