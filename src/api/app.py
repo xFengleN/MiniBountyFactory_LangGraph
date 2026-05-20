@@ -243,6 +243,9 @@ def serve_web_ui():
                                 <button onclick="retryAllFailed()" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-sm">
                                     <i class="fas fa-redo mr-1"></i> Retry All Failed
                                 </button>
+                                <button onclick="deleteAllFailed()" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm">
+                                    <i class="fas fa-trash mr-1"></i> Delete All Failed
+                                </button>
                             </div>
                         </div>
                         <div id="failedList" class="space-y-3">
@@ -1472,6 +1475,32 @@ def serve_web_ui():
                     }
                 }
                 alert(`Retried ${successCount} of ${failedIds.length} task(s)`);
+                loadTasks();
+            }
+
+            async function deleteAllFailed() {
+                if (!window.allTasks) return;
+                const isFailed = (t) => {
+                    const st = (t.processing_status || 'new') === 'pending' ? 'new' : t.processing_status;
+                    return ['failed', 'validation_failed', 'review_failed', 'error'].includes(st);
+                };
+                const failedIds = window.allTasks.filter(isFailed).map(t => t.id);
+                if (failedIds.length === 0) {
+                    alert('No failed tasks to delete');
+                    return;
+                }
+                if (!confirm(`Delete ${failedIds.length} failed task(s) and all their files? This cannot be undone.`)) return;
+                let successCount = 0;
+                for (const id of failedIds) {
+                    try {
+                        const res = await fetch('/api/tasks/' + id + '/delete', { method: 'DELETE' });
+                        const data = await res.json();
+                        if (data.success) successCount++;
+                    } catch (e) {
+                        console.error('Delete failed for task', id, e);
+                    }
+                }
+                alert(`Deleted ${successCount} of ${failedIds.length} task(s)`);
                 loadTasks();
             }
 
