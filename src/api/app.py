@@ -757,7 +757,7 @@ def serve_web_ui():
                             document.getElementById('sysOllamaModels').innerHTML = 'idle';
                         } else {
                             document.getElementById('sysOllamaModels').innerHTML = models.map(m =>
-                                '<span class="text-purple-300">' + m.name.split(':')[0] + '</span> ' +
+                                '<span class="text-purple-300">' + m.name.split(':')[0] + ' (' + m.param_size + ')</span> ' +
                                 '<span class="text-gray-500">(' + m.size_gb.toFixed(1) + 'GB, ' + m.processor + ', ' + (m.context/1024).toFixed(0) + 'k ctx)</span>'
                             ).join('<br>');
                         }
@@ -1665,14 +1665,20 @@ def dashboard_stats():
             models = []
             for m in data.get('models', []):
                 name = m.get('name', '')
-                size = m.get('size_vram', 0) or m.get('size', 0)
+                total_size = m.get('size', 0)
+                vram_size = m.get('size_vram', 0)
                 ctx = m.get('context_length', 0)
-                # If size_vram == size, it's fully in VRAM (GPU)
-                processor = 'GPU' if size == m.get('size', 0) else 'CPU'
+                details = m.get('details', {})
+                param_size = details.get('parameter_size', '')
+
+                # Calculate GPU % based on how much of the model is in VRAM
+                gpu_pct = round((vram_size / total_size * 100)) if total_size > 0 else 0
+                processor = 'GPU' if gpu_pct == 100 else f'{gpu_pct}% GPU'
+
                 models.append({
                     'name': name,
-                    'size': size,
-                    'size_gb': size / 1073741824,
+                    'param_size': param_size,
+                    'size_gb': total_size / 1073741824,
                     'processor': processor,
                     'context': ctx,
                 })
