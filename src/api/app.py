@@ -36,102 +36,111 @@ def serve_web_ui():
         .status-dot.red { background-color: #ef4444; }
         .status-dot.yellow { background-color: #eab308; }
         .tab-active { border-bottom: 2px solid #a855f7; color: #a855f7; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
     </style>
     </head>
     <body class="bg-gray-900 text-white">
         <div class="min-h-screen">
             <nav class="bg-gray-800 border-b border-gray-700">
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex items-center justify-between h-16">
-                        <div class="flex items-center">
-                            <i class="fas fa-robot text-2xl text-purple-500 mr-3"></i>
-                            <span class="text-xl font-bold">Bounty Factory</span>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between h-auto sm:h-16 p-3 sm:p-0 gap-3">
+                        <div class="flex items-center w-full sm:w-auto justify-between">
+                            <div class="flex items-center">
+                                <i class="fas fa-robot text-2xl text-purple-500 mr-3"></i>
+                                <span class="text-xl font-bold">Bounty Factory</span>
+                            </div>
+                            <button onclick="document.getElementById('navMenu').classList.toggle('hidden')" class="sm:hidden text-gray-400 hover:text-white p-2">
+                                <i class="fas fa-bars text-lg"></i>
+                            </button>
                         </div>
-                        <div class="flex items-center space-x-3">
-                            <button onclick="openScanModal()" id="scanBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded">
+                        <div id="navMenu" class="hidden sm:flex items-center space-x-2 w-full sm:w-auto flex-col sm:flex-row gap-2 sm:gap-3">
+                            <button onclick="openScanModal(); document.getElementById('navMenu').classList.add('hidden')" id="scanBtn" class="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-sm sm:text-base w-full sm:w-auto">
                                 <i class="fas fa-search mr-1"></i> Scan Tasks
                             </button>
-                            <button onclick="toggleSystem()" id="systemToggle" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded flex items-center gap-2">
+                            <button onclick="toggleSystem(); document.getElementById('navMenu').classList.add('hidden')" id="systemToggle" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded flex items-center justify-center gap-2 text-sm sm:text-base w-full sm:w-auto">
                                 <span id="systemToggleDot" class="status-dot red"></span>
                                 <span id="systemToggleText">Start</span>
                             </button>
-                            <button onclick="toggleSandbox()" id="sandboxToggle" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded flex items-center gap-2">
+                            <button onclick="toggleSandbox(); document.getElementById('navMenu').classList.add('hidden')" id="sandboxToggle" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded flex items-center justify-center gap-2 text-sm sm:text-base w-full sm:w-auto">
                                 <span id="sandboxToggleDot" class="status-dot yellow"></span>
                                 <span id="sandboxToggleText">Sandbox</span>
                             </button>
-                            <button onclick="openSettings()" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded" title="Settings">
-                                <i class="fas fa-cog"></i>
-                            </button>
-                            <button onclick="refreshAll()" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded">
-                                <i class="fas fa-sync"></i>
-                            </button>
+                            <div class="flex items-center gap-2 w-full sm:w-auto">
+                                <button onclick="openSettings(); document.getElementById('navMenu').classList.add('hidden')" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded flex-1 sm:flex-none" title="Settings">
+                                    <i class="fas fa-cog"></i>
+                                </button>
+                                <button onclick="refreshAll(); document.getElementById('navMenu').classList.add('hidden')" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded flex-1 sm:flex-none">
+                                    <i class="fas fa-sync"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </nav>
 
-            <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                <div class="bg-gray-800 rounded-lg p-4 mb-6">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-6">
-                            <div>
-                                <div class="text-gray-400 text-xs uppercase tracking-wide">CPU</div>
-                                <div id="sysCpu" class="text-lg font-mono font-bold">-</div>
+            <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+                <div class="bg-gray-800 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                        <div class="grid grid-cols-4 sm:flex sm:items-center sm:gap-6">
+                            <div class="py-1 sm:py-0">
+                                <div class="text-gray-400 text-[10px] sm:text-xs uppercase tracking-wide">CPU</div>
+                                <div id="sysCpu" class="text-sm sm:text-lg font-mono font-bold">-</div>
                             </div>
-                            <div class="h-8 w-px bg-gray-700"></div>
-                            <div>
-                                <div class="text-gray-400 text-xs uppercase tracking-wide">RAM</div>
-                                <div id="sysRam" class="text-lg font-mono font-bold">-</div>
+                            <div class="hidden sm:block h-8 w-px bg-gray-700"></div>
+                            <div class="py-1 sm:py-0">
+                                <div class="text-gray-400 text-[10px] sm:text-xs uppercase tracking-wide">RAM</div>
+                                <div id="sysRam" class="text-sm sm:text-lg font-mono font-bold">-</div>
                             </div>
-                            <div class="h-8 w-px bg-gray-700"></div>
-                            <div>
-                                <div class="text-gray-400 text-xs uppercase tracking-wide">Disk</div>
-                                <div id="sysDisk" class="text-lg font-mono font-bold">-</div>
+                            <div class="hidden sm:block h-8 w-px bg-gray-700"></div>
+                            <div class="py-1 sm:py-0">
+                                <div class="text-gray-400 text-[10px] sm:text-xs uppercase tracking-wide">Disk</div>
+                                <div id="sysDisk" class="text-sm sm:text-lg font-mono font-bold">-</div>
                             </div>
-                            <div class="h-8 w-px bg-gray-700"></div>
-                            <div>
-                                <div class="text-gray-400 text-xs uppercase tracking-wide">Uptime</div>
-                                <div id="uptimeText" class="text-lg font-mono font-bold">-</div>
+                            <div class="hidden sm:block h-8 w-px bg-gray-700"></div>
+                            <div class="py-1 sm:py-0">
+                                <div class="text-gray-400 text-[10px] sm:text-xs uppercase tracking-wide">Uptime</div>
+                                <div id="uptimeText" class="text-sm sm:text-lg font-mono font-bold">-</div>
                             </div>
                         </div>
-                        <div class="flex items-center gap-6 text-xs">
-                            <div>
-                                <div class="text-gray-400 uppercase tracking-wide">Ollama</div>
-                                <div id="sysOllamaModels" class="text-gray-300 mt-0.5">-</div>
+                        <div class="grid grid-cols-3 sm:flex sm:items-center sm:gap-6 text-xs border-t sm:border-t-0 border-gray-700 pt-2 sm:pt-0">
+                            <div class="py-1 sm:py-0">
+                                <div class="text-gray-400 text-[10px] sm:text-xs uppercase tracking-wide">Ollama</div>
+                                <div id="sysOllamaModels" class="text-gray-300 mt-0.5 text-xs">-</div>
                             </div>
-                            <div class="h-8 w-px bg-gray-700"></div>
-                            <div>
-                                <div class="text-gray-400 uppercase tracking-wide">Containers</div>
-                                <div id="sysContainers" class="text-gray-300 mt-0.5">-</div>
+                            <div class="hidden sm:block h-8 w-px bg-gray-700"></div>
+                            <div class="py-1 sm:py-0">
+                                <div class="text-gray-400 text-[10px] sm:text-xs uppercase tracking-wide">Containers</div>
+                                <div id="sysContainers" class="text-gray-300 mt-0.5 text-xs">-</div>
                             </div>
-                            <div class="h-8 w-px bg-gray-700"></div>
-                            <div>
-                                <div class="text-gray-400 uppercase tracking-wide">Agents</div>
-                                <div id="sysAgents" class="text-purple-400 mt-0.5">-</div>
+                            <div class="hidden sm:block h-8 w-px bg-gray-700"></div>
+                            <div class="py-1 sm:py-0">
+                                <div class="text-gray-400 text-[10px] sm:text-xs uppercase tracking-wide">Agents</div>
+                                <div id="sysAgents" class="text-purple-400 mt-0.5 text-xs">-</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-gray-800 rounded-lg mb-6">
-                    <div class="flex border-b border-gray-700">
-                        <button onclick="switchTab('new')" id="tab-new" class="tab-active px-6 py-3 font-medium">
-                            <i class="fas fa-inbox mr-2"></i>New <span id="count-new" class="ml-1 text-xs bg-blue-600 px-2 py-0.5 rounded-full">0</span>
+                <div class="bg-gray-800 rounded-lg mb-4 sm:mb-6">
+                    <div class="flex overflow-x-auto scrollbar-hide border-b border-gray-700">
+                        <button onclick="switchTab('new')" id="tab-new" class="tab-active px-3 sm:px-6 py-3 font-medium whitespace-nowrap text-sm">
+                            <i class="fas fa-inbox mr-1 sm:mr-2"></i>New <span id="count-new" class="ml-1 text-xs bg-blue-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('processing')" id="tab-processing" class="px-6 py-3 font-medium text-gray-400">
-                            <i class="fas fa-spinner mr-2"></i>Processing <span id="count-processing" class="ml-1 text-xs bg-yellow-600 px-2 py-0.5 rounded-full">0</span>
+                        <button onclick="switchTab('processing')" id="tab-processing" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                            <i class="fas fa-spinner mr-1 sm:mr-2"></i>Processing <span id="count-processing" class="ml-1 text-xs bg-yellow-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('queued_for_review')" id="tab-queued_for_review" class="px-6 py-3 font-medium text-gray-400">
-                            <i class="fas fa-clipboard-check mr-2"></i>Review <span id="count-queued_for_review" class="ml-1 text-xs bg-purple-600 px-2 py-0.5 rounded-full">0</span>
+                        <button onclick="switchTab('queued_for_review')" id="tab-queued_for_review" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                            <i class="fas fa-clipboard-check mr-1 sm:mr-2"></i>Review <span id="count-queued_for_review" class="ml-1 text-xs bg-purple-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('failed')" id="tab-failed" class="px-6 py-3 font-medium text-gray-400">
-                            <i class="fas fa-exclamation-triangle mr-2"></i>Failed <span id="count-failed" class="ml-1 text-xs bg-red-600 px-2 py-0.5 rounded-full">0</span>
+                        <button onclick="switchTab('failed')" id="tab-failed" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                            <i class="fas fa-exclamation-triangle mr-1 sm:mr-2"></i>Failed <span id="count-failed" class="ml-1 text-xs bg-red-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('reviews')" id="tab-reviews" class="px-6 py-3 font-medium text-gray-400">
-                            <i class="fas fa-clipboard-list mr-2"></i>Pending Reviews <span id="count-reviews" class="ml-1 text-xs bg-green-600 px-2 py-0.5 rounded-full">0</span>
+                        <button onclick="switchTab('reviews')" id="tab-reviews" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                            <i class="fas fa-clipboard-list mr-1 sm:mr-2"></i>Pending Reviews <span id="count-reviews" class="ml-1 text-xs bg-green-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('logs')" id="tab-logs" class="px-6 py-3 font-medium text-gray-400">
-                            <i class="fas fa-terminal mr-2"></i>Logs
+                        <button onclick="switchTab('logs')" id="tab-logs" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                            <i class="fas fa-terminal mr-1 sm:mr-2"></i>Logs
                         </button>
                     </div>
 
@@ -297,11 +306,11 @@ def serve_web_ui():
                     </div>
                 </div>
 
-                <div id="processingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-                    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg mx-4">
+                <div id="processingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
+                    <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-lg mx-auto sm:mx-4 max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
                         <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-bold"><i class="fas fa-cog fa-spin mr-2"></i>Processing Task</h3>
-                            <button onclick="hideProcessingModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+                            <h3 class="text-base sm:text-lg font-bold"><i class="fas fa-cog fa-spin mr-2"></i>Processing Task</h3>
+                            <button onclick="hideProcessingModal()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
                         </div>
                         <div class="mb-4">
                             <div class="flex items-center justify-between mb-2">
@@ -312,22 +321,22 @@ def serve_web_ui():
                                 <div id="processingProgressBar" class="bg-purple-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
                             </div>
                         </div>
-                        <div id="processingLogContent" class="text-sm text-gray-300 font-mono bg-gray-900 p-3 rounded h-64 overflow-y-auto space-y-1"></div>
+                        <div id="processingLogContent" class="text-sm text-gray-300 font-mono bg-gray-900 p-3 rounded h-48 sm:h-64 overflow-y-auto space-y-1"></div>
                     </div>
                 </div>
 
-                <div id="reviewDetailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-                    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+                <div id="reviewDetailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
+                    <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl mx-auto sm:mx-4 max-h-[90vh] overflow-y-auto">
                         <div class="flex justify-between items-center mb-4">
-                            <h3 id="reviewDetailTitle" class="text-lg font-bold"><i class="fas fa-code mr-2"></i>Review Detail</h3>
-                            <button onclick="closeReviewDetail()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+                            <h3 id="reviewDetailTitle" class="text-base sm:text-lg font-bold"><i class="fas fa-code mr-2"></i>Review Detail</h3>
+                            <button onclick="closeReviewDetail()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
                         </div>
-                        <pre id="reviewDetailContent" class="bg-gray-900 p-4 rounded text-xs font-mono whitespace-pre overflow-x-auto max-h-[70vh] overflow-y-auto"></pre>
+                        <pre id="reviewDetailContent" class="bg-gray-900 p-3 sm:p-4 rounded text-xs font-mono whitespace-pre overflow-x-auto max-h-[70vh] overflow-y-auto"></pre>
                     </div>
                 </div>
 
-                <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-                    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+                <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
+                    <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-2xl mx-auto sm:mx-4 max-h-[90vh] overflow-y-auto">
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="text-lg font-bold"><i class="fas fa-cog mr-2"></i>Settings</h3>
                             <button onclick="closeSettings()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
@@ -419,14 +428,14 @@ def serve_web_ui():
             </main>
         </div>
 
-        <div id="scanModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-            <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
-                <h3 class="text-lg font-bold mb-4">Scan for Tasks</h3>
+        <div id="scanModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
+            <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md mx-auto sm:mx-4 max-h-[90vh] overflow-y-auto">
+                <h3 class="text-base sm:text-lg font-bold mb-4">Scan for Tasks</h3>
 
                 <div class="space-y-4">
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">Source</label>
-                        <div class="flex space-x-4">
+                        <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
                             <label class="flex items-center space-x-2 cursor-pointer">
                                 <input type="radio" name="scanMode" value="test" id="scanModeTest" checked onchange="updateScanMode()" class="accent-purple-500">
                                 <span class="text-sm">Free Tasks (GitHub)</span>
@@ -441,9 +450,9 @@ def serve_web_ui():
                     <div id="priceRangeSection" class="hidden">
                         <label class="block text-sm text-gray-400 mb-1">Price Range ($)</label>
                         <div class="flex items-center space-x-2">
-                            <input type="number" id="minPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm">
+                            <input type="number" id="minPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
                             <span class="text-gray-400">to</span>
-                            <input type="number" id="maxPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm">
+                            <input type="number" id="maxPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
                         </div>
                         <p class="text-xs text-gray-500 mt-1">0 = no filter. Set a range to filter bounties by price.</p>
                     </div>
@@ -452,7 +461,7 @@ def serve_web_ui():
                         <label class="block text-sm text-gray-400 mb-1">Labels to Search</label>
                         <div id="selectedLabels" class="flex flex-wrap gap-1 mb-2"></div>
                         <div id="labelDropdownContainer">
-                            <select id="labelSelector" onchange="addLabel()" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-full text-sm">
+                            <select id="labelSelector" onchange="addLabel()" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-full text-sm min-h-[44px]">
                                 <option value="">— Select a label —</option>
                                 <option value="good first issue">good first issue</option>
                                 <option value="help wanted">help wanted</option>
@@ -473,13 +482,13 @@ def serve_web_ui():
 
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">Max Tasks</label>
-                        <input type="number" id="maxTasks" value="10" min="1" max="50" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm">
+                        <input type="number" id="maxTasks" value="10" min="1" max="50" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
                     </div>
                 </div>
 
                 <div class="flex justify-end space-x-3 mt-6">
-                    <button onclick="closeScanModal()" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button>
-                    <button onclick="executeScan()" id="executeScanBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm">
+                    <button onclick="closeScanModal()" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm min-h-[44px]">Cancel</button>
+                    <button onclick="executeScan()" id="executeScanBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm min-h-[44px]">
                         <i class="fas fa-search mr-1"></i> Scan
                     </button>
                 </div>
@@ -1001,30 +1010,32 @@ def serve_web_ui():
 
                 function renderTaskCard(t, showCheckbox = true) {
                     return `
-                    <div class="bg-gray-750 rounded-lg p-4 border border-gray-700 hover:border-purple-500 transition ${isProcessing(t) ? 'border-yellow-500' : ''}">
-                        <div class="flex items-start gap-3">
-                            ${showCheckbox ? `<input type="checkbox" class="task-checkbox accent-purple-500 w-4 h-4 mt-1" data-id="${t.id}" onchange="updateSelectedCount()" ${!isUntouched(t) ? 'disabled' : ''}>` : ''}
-                            <div class="flex-1">
-                                <h3 class="font-bold">${t.title}</h3>
-                                <p class="text-gray-400 text-sm">${t.repository_name || 'Unknown'}</p>
-                                <div class="flex flex-wrap gap-2 mt-2 text-xs">
-                                    <span class="px-2 py-0.5 rounded bg-gray-600 font-mono">#${t.id}</span>
-                                    <span class="px-2 py-0.5 rounded ${statusColor(t.processing_status)}">${normalizeStatus(t.processing_status) || 'new'}</span>
-                                    <span class="${difficultyBadge(t.difficulty)}">${difficultyLabel(t.difficulty)}</span>
-                                    ${t.is_bounty ? `<span class="px-2 py-0.5 rounded bg-amber-600 text-white">Bounty ${t.price ? '$' + t.price : 'TBD'}</span>` : `<span class="text-gray-400">$${t.price || 0}</span>`}
-                                    ${t.classification ? `<span class="text-gray-400">${t.classification}</span>` : ''}
-                                    <span class="text-gray-500">${formatDate(t.fetched_at)}</span>
-                                    ${t.tags ? `<span class="text-gray-500 truncate max-w-[200px]">${t.tags.split(',').slice(0, 3).join(', ')}</span>` : ''}
+                    <div class="bg-gray-750 rounded-lg p-3 sm:p-4 border border-gray-700 hover:border-purple-500 transition ${isProcessing(t) ? 'border-yellow-500' : ''}">
+                        <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+                            <div class="flex items-start gap-3 flex-1">
+                                ${showCheckbox ? `<input type="checkbox" class="task-checkbox accent-purple-500 w-4 h-4 mt-1 shrink-0" data-id="${t.id}" onchange="updateSelectedCount()" ${!isUntouched(t) ? 'disabled' : ''}>` : ''}
+                                <div class="flex-1 min-w-0">
+                                    <h3 class="font-bold text-sm sm:text-base">${t.title}</h3>
+                                    <p class="text-gray-400 text-xs sm:text-sm">${t.repository_name || 'Unknown'}</p>
+                                    <div class="flex flex-wrap gap-1.5 sm:gap-2 mt-2 text-xs">
+                                        <span class="px-2 py-0.5 rounded bg-gray-600 font-mono">#${t.id}</span>
+                                        <span class="px-2 py-0.5 rounded ${statusColor(t.processing_status)}">${normalizeStatus(t.processing_status) || 'new'}</span>
+                                        <span class="${difficultyBadge(t.difficulty)}">${difficultyLabel(t.difficulty)}</span>
+                                        ${t.is_bounty ? `<span class="px-2 py-0.5 rounded bg-amber-600 text-white">Bounty ${t.price ? '$' + t.price : 'TBD'}</span>` : `<span class="text-gray-400">$${t.price || 0}</span>`}
+                                        ${t.classification ? `<span class="text-gray-400">${t.classification}</span>` : ''}
+                                        <span class="text-gray-500">${formatDate(t.fetched_at)}</span>
+                                        ${t.tags ? `<span class="text-gray-500 truncate max-w-[150px] sm:max-w-[200px]">${t.tags.split(',').slice(0, 3).join(', ')}</span>` : ''}
+                                    </div>
                                 </div>
                             </div>
-                            <div class="flex gap-2 ml-2 shrink-0">
-                                ${isUntouched(t) ? `<button onclick="processTask(${t.id})" class="bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded text-sm font-medium"><i class="fas fa-play mr-1"></i> Process</button>` : ''}
-                                ${isProcessing(t) ? `<button onclick="showProcessingModal(${t.id})" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-1.5 rounded text-sm font-medium"><i class="fas fa-spinner fa-spin mr-1"></i> Processing</button>` : ''}
-                                ${isProcessing(t) ? `<button onclick="resetTask(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm" title="Reset to New"><i class="fas fa-undo"></i></button>` : ''}
-                                ${isFailed(t) ? `<button onclick="retryTask(${t.id})" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-sm font-medium"><i class="fas fa-redo mr-1"></i> Retry</button>` : ''}
-                                ${!isUntouched(t) ? `<button onclick="deleteTaskWorkspace(${t.id})" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm" title="Delete Local Files"><i class="fas fa-trash"></i></button>` : ''}
-                                <button onclick="viewTaskLogs(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm" title="View Logs"><i class="fas fa-terminal"></i></button>
-                                <a href="${t.issue_url}" target="_blank" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm"><i class="fas fa-external-link"></i></a>
+                            <div class="flex flex-wrap gap-2 sm:gap-2 sm:ml-2 shrink-0 sm:flex-nowrap">
+                                ${isUntouched(t) ? `<button onclick="processTask(${t.id})" class="bg-purple-600 hover:bg-purple-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-play mr-1"></i> Process</button>` : ''}
+                                ${isProcessing(t) ? `<button onclick="showProcessingModal(${t.id})" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-spinner fa-spin mr-1"></i> Processing</button>` : ''}
+                                ${isProcessing(t) ? `<button onclick="resetTask(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Reset to New"><i class="fas fa-undo"></i></button>` : ''}
+                                ${isFailed(t) ? `<button onclick="retryTask(${t.id})" class="bg-blue-600 hover:bg-blue-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-redo mr-1"></i> Retry</button>` : ''}
+                                ${!isUntouched(t) ? `<button onclick="deleteTaskWorkspace(${t.id})" class="bg-red-600 hover:bg-red-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Local Files"><i class="fas fa-trash"></i></button>` : ''}
+                                <button onclick="viewTaskLogs(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="View Logs"><i class="fas fa-terminal"></i></button>
+                                <a href="${t.issue_url}" target="_blank" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0"><i class="fas fa-external-link"></i></a>
                             </div>
                         </div>
                     </div>`;
