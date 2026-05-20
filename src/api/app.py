@@ -1037,7 +1037,8 @@ def serve_web_ui():
                                 ${isProcessing(t) ? `<button onclick="showProcessingModal(${t.id})" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-spinner fa-spin mr-1"></i> Processing</button>` : ''}
                                 ${isProcessing(t) ? `<button onclick="resetTask(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Reset to New"><i class="fas fa-undo"></i></button>` : ''}
                                 ${isFailed(t) ? `<button onclick="retryTask(${t.id})" class="bg-blue-600 hover:bg-blue-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-redo mr-1"></i> Retry</button>` : ''}
-                                ${!isUntouched(t) ? `<button onclick="deleteTaskWorkspace(${t.id})" class="bg-red-600 hover:bg-red-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Local Files"><i class="fas fa-trash"></i></button>` : ''}
+                                ${isFailed(t) ? `<button onclick="deleteFailedTask(${t.id})" class="bg-red-600 hover:bg-red-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Task"><i class="fas fa-trash mr-1"></i> Delete</button>` : ''}
+                                ${!isUntouched(t) && !isFailed(t) ? `<button onclick="deleteTaskWorkspace(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Local Files"><i class="fas fa-trash"></i></button>` : ''}
                                 <button onclick="viewTaskLogs(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="View Logs"><i class="fas fa-terminal"></i></button>
                                 <a href="${t.issue_url}" target="_blank" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0"><i class="fas fa-external-link"></i></a>
                             </div>
@@ -1415,6 +1416,22 @@ def serve_web_ui():
                     const data = await res.json();
                     if (data.success) {
                         alert('Local files deleted');
+                        loadTasks();
+                    } else {
+                        alert('Failed: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (e) {
+                    alert('Failed: ' + e.message);
+                }
+            }
+
+            async function deleteFailedTask(id) {
+                if (!confirm('Delete this failed task and all its files? This cannot be undone.')) return;
+                try {
+                    const res = await fetch('/api/tasks/' + id + '/delete', { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.success) {
+                        alert('Task deleted');
                         loadTasks();
                     } else {
                         alert('Failed: ' + (data.error || 'Unknown error'));
@@ -2186,6 +2203,36 @@ def delete_task_workspace(task_id):
 
     success = cleanup_workspace(task_id)
     return jsonify({'success': success, 'deleted': workspace_dir.name if success else None})
+
+
+@app.route('/api/tasks/<int:task_id>/delete', methods=['DELETE'])
+def delete_task(task_id):
+    from ..core.sandbox import cleanup_workspace
+    from pathlib import Path
+    from ..core.config import config
+
+    bounty = db.get_bounty_by_id(task_id)
+    if not bounty:
+        return jsonify({'success': False, 'error': 'Task not found'}), 404
+
+    # Delete workspace files
+    cleanup_workspace(task_id)
+
+    # Delete from database
+    with db.get_connection() as conn:
+        conn.cursor().execute("DELETE FROM bounties WHERE id = ?", (task_id,))
+        conn.cursor().execute("DELETE FROM processing_logs WHERE bounty_id = ?", (task_id,))
+        conn.cursor().execute("DELETE FROM review_queue WHERE bounty_id = ?", (task_id,))
+        conn.commit()
+
+    # Clear in-memory state
+    task_id_str = str(task_id)
+    if task_id_str in task_processor._status:
+        del task_processor._status[task_id_str]
+    if task_id_str in task_processor._logs:
+        del task_processor._logs[task_id_str]
+
+    return jsonify({'success': True, 'message': 'Task deleted'})
 
 
 @app.route('/api/tasks/<int:task_id>/status', methods=['GET'])
