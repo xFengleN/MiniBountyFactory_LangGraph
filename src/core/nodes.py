@@ -264,13 +264,22 @@ def enqueue_review_node(state: BountyState) -> dict:
 
     logger.info(f"Node enqueue_review: bounty {bounty_id}")
 
+    raw_confidence = state.get("confidence", 0.5)
+    raw_score = state.get("review_score", 50)
+
+    # Clamp values to prevent >100% scores
+    raw_confidence = min(1.0, max(0.0, raw_confidence))
+    raw_score = min(100.0, max(0.0, raw_score))
+
+    confidence_score = (raw_confidence * raw_score) / 100
+
     review_data = {
         "bounty_id": bounty_id,
         "branch_name": state.get("branch_name", ""),
         "commit_sha": state.get("commit_sha", ""),
         "diff_content": state.get("diff_content", ""),
         "agent_type": state.get("agent_type", "unknown"),
-        "confidence_score": state.get("confidence", 0.5) * state.get("review_score", 50) / 100,
+        "confidence_score": confidence_score,
         "validation_passed": state.get("validation_passed", False),
         "test_output": state.get("validation", {}).get("failures", []),
         "suggested_comment": state.get("suggested_comment", ""),
