@@ -1277,7 +1277,7 @@ def serve_web_ui():
             function parseDiffFiles(diffText) {
                 const files = [];
                 let currentFile = null;
-                const lines = diffText.split('\n');
+                const lines = diffText.split('\\n');
 
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
@@ -1340,7 +1340,7 @@ def serve_web_ui():
                     .replace(/\b(function|const|let|var|return|if|else|for|while|class|import|from|export|default|async|await|try|catch|new|this|self|def|print)\b/g, '<span class="text-purple-400">$1</span>')
                     .replace(/\b(true|false|null|None|True|False|undefined|NaN)\b/g, '<span class="text-orange-400">$1</span>')
                     .replace(/\b(\d+\.?\d*)\b/g, '<span class="text-cyan-400">$1</span>')
-                    .replace(/(["'`])(.*?)\1/g, '<span class="text-green-400">$1$2$1</span>')
+                    .replace(/(["'])(.*?)\1/g, '<span class="text-green-400">$1$2$1</span>')
                     .replace(/(\/\/.*$|#.*$)/gm, '<span class="text-gray-500">$1</span>');
             }
 
