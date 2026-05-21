@@ -24,11 +24,12 @@ class ReviewOutput(BaseModel):
 
 class CodeReviewAgent:
     def __init__(self):
-        ollama_config = config.ollama
-        self.model_name = ollama_config.get('models.code_reviewer', 'llama3.2:3b')
+        agents_config = config.agents
+        roles = agents_config.get('roles', {})
+        self.model_name = roles.get('code_reviewer', 'qwen2.5-coder:7b-instruct-q4_K_M')
         self.llm = ChatOllama(
             model=self.model_name,
-            base_url=ollama_config.get('base_url', 'http://localhost:11434'),
+            base_url=config.ollama.get('base_url', 'http://localhost:11434'),
             temperature=0.2,
             num_predict=2048,
         ).with_structured_output(ReviewOutput)

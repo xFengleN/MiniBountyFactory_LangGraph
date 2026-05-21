@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 class Subtask(BaseModel):
     id: int
     description: str
-    type: str
+    role: str
     depends_on: List[int]
     estimated_complexity: str
 
@@ -23,12 +23,15 @@ class DecompositionOutput(BaseModel):
 
 
 class TaskDecomposer:
+    ROLES = ['junior_coder', 'super_coder']
+
     def __init__(self):
-        ollama_config = config.ollama
-        self.model_name = ollama_config.get('models.complex_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
+        agents_config = config.agents
+        roles = agents_config.get('roles', {})
+        self.model_name = roles.get('complex_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
         self.llm = ChatOllama(
             model=self.model_name,
-            base_url=ollama_config.get('base_url', 'http://localhost:11434'),
+            base_url=config.ollama.get('base_url', 'http://localhost:11434'),
             temperature=0.3,
             num_predict=1024,
         ).with_structured_output(DecompositionOutput)
@@ -42,21 +45,23 @@ class TaskDecomposer:
 Guidelines:
 - Each subtask should be solvable independently
 - Identify dependencies between subtasks
-- Mark subtasks as 'local' (simple, can use local LLM) or 'cloud' (needs cloud model)
+- Assign each subtask to a role: 'junior_coder' (simple, routine changes) or 'super_coder' (complex, architectural changes)
 
 Task:
 Title: {title}
 Description: {description}
 
-Break it into subtasks and mark each as 'local' or 'cloud'."""
+Break it into subtasks and assign each to 'junior_coder' or 'super_coder'."""
 
         try:
             result: DecompositionOutput = self.llm.invoke(prompt)
 
-            local_count = sum(1 for s in result.subtasks if s.type == 'local')
-            cloud_count = sum(1 for s in result.subtasks if s.type == 'cloud')
+            role_counts = {}
+            for s in result.subtasks:
+                role_counts[s.role] = role_counts.get(s.role, 0) + 1
+            summary = ', '.join(f'{v} {k}' for k, v in sorted(role_counts.items()))
 
-            logger.info(f"Decomposed into {len(result.subtasks)} subtasks: {local_count} local, {cloud_count} cloud")
+            logger.info(f"Decomposed into {len(result.subtasks)} subtasks: {summary}")
 
             return [s.model_dump() for s in result.subtasks]
 
@@ -66,4 +71,4 @@ Break it into subtasks and mark each as 'local' or 'cloud'."""
 
     def can_solve_locally(self, subtask: Dict[str, Any]) -> bool:
         complexity = subtask.get('estimated_complexity', 'medium')
-        return complexity in ['low', 'medium'] and subtask.get('type') == 'local'
+        return complexity in ['low', 'medium']

@@ -28,11 +28,12 @@ class FixOutput(BaseModel):
 
 class SimpleTaskAgent:
     def __init__(self):
-        ollama_config = config.ollama
-        self.model_name = ollama_config.get('models.simple_agent', 'llama3.2:3b')
+        agents_config = config.agents
+        roles = agents_config.get('roles', {})
+        self.model_name = roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
         self.llm = ChatOllama(
             model=self.model_name,
-            base_url=ollama_config.get('base_url', 'http://localhost:11434'),
+            base_url=config.ollama.get('base_url', 'http://localhost:11434'),
             temperature=0.4,
             num_predict=4096,
         ).with_structured_output(FixOutput)

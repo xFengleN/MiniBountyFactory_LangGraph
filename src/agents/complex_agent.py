@@ -41,7 +41,15 @@ class ComplexTaskAgent:
         self.decomposer = TaskDecomposer()
 
         ollama_config = config.ollama
-        self.local_model_name = ollama_config.get('models.simple_agent', 'llama3.2:3b')
+        agents_config = config.agents
+        roles = agents_config.get('roles', {})
+
+        self.role_models = {}
+        for role_name in ['junior_coder', 'super_coder', 'code_reviewer', 'tester']:
+            model = roles.get(role_name, roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M'))
+            self.role_models[role_name] = model
+
+        self.local_model_name = self.role_models.get('junior_coder', 'qwen2.5-coder:3b-instruct-q4_K_M')
         self.local_llm = ChatOllama(
             model=self.local_model_name,
             base_url=ollama_config.get('base_url', 'http://localhost:11434'),
@@ -75,17 +83,18 @@ class ComplexTaskAgent:
                 return self._process_with_cloud(repo_path, bounty, bounty_id)
 
             all_files = []
-            cloud_used = False
+            role_usage = {}
 
             for subtask in subtasks:
                 subtask_id = subtask.get('id')
                 subtask_desc = subtask.get('description', '')
-                needs_cloud = subtask.get('type') == 'cloud'
+                subtask_role = subtask.get('role', 'junior_coder')
 
-                logger.info(f"Subtask {subtask_id}: {'cloud' if needs_cloud else 'local'} - {subtask_desc[:50]}...")
+                role_usage[subtask_role] = role_usage.get(subtask_role, 0) + 1
 
-                if needs_cloud:
-                    cloud_used = True
+                logger.info(f"Subtask {subtask_id}: {subtask_role} - {subtask_desc[:50]}...")
+
+                if subtask_role == 'super_coder':
                     fix_result = self._solve_subtask_with_cloud(
                         repo_path, subtask_desc, bounty, subtask_id
                     )
@@ -109,7 +118,7 @@ class ComplexTaskAgent:
 
             diff_content = self._get_diff(repo_path)
 
-            confidence = 0.6 if cloud_used else 0.8
+            confidence = 0.6 if role_usage.get('super_coder', 0) > 0 else 0.8
 
             return {
                 'bounty_id': bounty_id,
@@ -119,7 +128,7 @@ class ComplexTaskAgent:
                 'files_changed': all_files,
                 'confidence': confidence,
                 'agent_type': 'complex_hybrid',
-                'cloud_used': cloud_used,
+                'role_usage': role_usage,
                 'subtasks_completed': len(subtasks),
                 'repo_path': repo_path
             }
@@ -163,6 +172,7 @@ Solve this subtask."""
         bounty: Dict[str, Any],
         subtask_id: int
     ) -> Optional[Dict[str, Any]]:
+        model = self.role_models.get('super_coder', 'default')
         prompt = f"""Subtask {subtask_id} of a larger task:
 
 Subtask: {subtask_desc}
@@ -181,7 +191,7 @@ Solve this subtask with expert-level code. Return JSON:
                     'Content-Type': 'application/json'
                 },
                 json={
-                    'model': 'default',
+                    'model': model,
                     'messages': [
                         {'role': 'system', 'content': 'Expert developer solving a subtask. Return JSON only.'},
                         {'role': 'user', 'content': prompt}
@@ -192,7 +202,7 @@ Solve this subtask with expert-level code. Return JSON:
             )
 
             if response.status_code != 200:
-                logger.error(f"Cloud subtask failed: {response.status_code}")
+                logger.error(f"Super coder subtask failed: {response.status_code}")
                 return None
 
             result = response.json()
@@ -201,7 +211,7 @@ Solve this subtask with expert-level code. Return JSON:
             return self._parse_fix_response(content)
 
         except Exception as e:
-            logger.error(f"Cloud subtask failed: {e}")
+            logger.error(f"Super coder subtask failed: {e}")
             return None
 
     def _process_with_cloud(
@@ -237,7 +247,7 @@ Solve this subtask with expert-level code. Return JSON:
             'files_changed': fix_result.get('files', []),
             'confidence': fix_result.get('confidence', 0.7),
             'agent_type': 'complex_full_cloud',
-            'cloud_used': True,
+            'role_usage': {'super_coder': 1},
             'repo_path': repo_path
         }
 

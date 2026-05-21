@@ -19,11 +19,12 @@ class ClassificationOutput(BaseModel):
 
 class TaskClassifier:
     def __init__(self):
-        ollama_config = config.ollama
-        self.model_name = ollama_config.get('models.classifier', 'qwen2.5:0.5b')
+        agents_config = config.agents
+        roles = agents_config.get('roles', {})
+        self.model_name = roles.get('classifier', 'qwen2.5:0.5b')
         self.llm = ChatOllama(
             model=self.model_name,
-            base_url=ollama_config.get('base_url', 'http://localhost:11434'),
+            base_url=config.ollama.get('base_url', 'http://localhost:11434'),
             temperature=0.3,
             num_predict=512,
         ).with_structured_output(ClassificationOutput)

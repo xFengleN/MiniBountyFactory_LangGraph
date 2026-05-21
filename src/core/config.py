@@ -78,6 +78,10 @@ class Config:
         return self._config.get('agents', {})
 
     @property
+    def agent_roles(self) -> Dict[str, Any]:
+        return self._config.get('agents', {}).get('roles', {})
+
+    @property
     def logging(self) -> Dict[str, Any]:
         return self._config.get('logging', {})
 

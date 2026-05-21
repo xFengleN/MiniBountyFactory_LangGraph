@@ -9,11 +9,6 @@ test_mode:
   max_tasks_per_scan: 10
 ollama:
   base_url: http://localhost:11434
-  models:
-    classifier: qwen2.5:0.5b
-    simple_agent: qwen2.5-coder:7b-instruct-q4_K_M
-    complex_agent: qwen2.5-coder:7b-instruct-q4_K_M
-    code_reviewer: qwen2.5-coder:7b-instruct-q4_K_M
 sandbox:
   enabled: true
   image: bounty-sandbox:latest
@@ -25,6 +20,14 @@ opencode:
   base_url: https://api.opencode.ai
   timeout: 300
 agents:
+  roles:
+    classifier: qwen2.5:0.5b
+    simple_agent: qwen2.5-coder:7b-instruct-q4_K_M
+    complex_agent: qwen2.5-coder:7b-instruct-q4_K_M
+    junior_coder: qwen2.5-coder:3b-instruct-q4_K_M
+    super_coder: qwen2.5-coder:7b-instruct-q4_K_M
+    code_reviewer: qwen2.5-coder:7b-instruct-q4_K_M
+    tester: qwen2.5-coder:3b-instruct-q4_K_M
   simple_task_max_loc: 50
   simple_task_max_files: 3
   max_retries: 3

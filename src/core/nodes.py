@@ -81,7 +81,9 @@ def simple_agent_node(state: BountyState) -> dict:
     logger.info(f"Node simple_agent: bounty {bounty_id}")
     db.log_processing(bounty_id, "simple_agent", "start", "processing")
 
-    model = config.ollama.get("models.simple_agent", "qwen2.5-coder:7b-instruct-q4_K_M")
+    agents_config = config.agents
+    roles = agents_config.get('roles', {})
+    model = roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
     result = run_sandbox_task(bounty, agent_type="simple", model=model)
 
     if result is None:
@@ -127,13 +129,18 @@ def complex_agent_node(state: BountyState) -> dict:
     logger.info(f"Node complex_agent: bounty {bounty_id}")
     db.log_processing(bounty_id, "complex_agent", "start", "processing")
 
-    model = config.ollama.get("models.complex_agent", "qwen2.5-coder:7b-instruct-q4_K_M")
+    agents_config = config.agents
+    roles = agents_config.get('roles', {})
+    model = roles.get('complex_agent', roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M'))
     subtasks = _complex_agent.decomposer.decompose(bounty)
 
-    local_count = sum(1 for s in subtasks if s.get('type') == 'local')
-    cloud_count = sum(1 for s in subtasks if s.get('type') == 'cloud')
+    role_counts = {}
+    for s in subtasks:
+        role = s.get('role', 'unknown')
+        role_counts[role] = role_counts.get(role, 0) + 1
+    summary = ', '.join(f'{v} {k}' for k, v in sorted(role_counts.items()))
     db.log_processing(bounty_id, "complex_agent", "decompose", "processing",
-                      f"Decomposed into {len(subtasks)} subtasks: {local_count} local, {cloud_count} cloud")
+                      f"Decomposed into {len(subtasks)} subtasks: {summary}")
 
     result = run_sandbox_task(
         bounty,

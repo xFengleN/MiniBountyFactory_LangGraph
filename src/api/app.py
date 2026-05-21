@@ -400,29 +400,46 @@ def serve_web_ui():
                             </div>
 
                             <div>
-                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-brain mr-1"></i> Ollama Models</h4>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Classifier</label>
-                                        <input type="text" id="cfgModelClassifier" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Simple Agent</label>
-                                        <input type="text" id="cfgModelSimple" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Complex Agent</label>
-                                        <input type="text" id="cfgModelComplex" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Code Reviewer</label>
-                                        <input type="text" id="cfgModelReviewer" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
-                                    </div>
-                                </div>
-                                <div class="mt-2">
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-brain mr-1"></i> Ollama</h4>
+                                <div>
                                     <label class="block text-xs text-gray-400 mb-1">Base URL</label>
                                     <input type="text" id="cfgOllamaUrl" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
                                 </div>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-users mr-1"></i> Agents</h4>
+                                <div class="space-y-2">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Classifier</label>
+                                        <select id="cfgRoleClassifier" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Simple Agent</label>
+                                        <select id="cfgRoleSimple" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Complex Agent</label>
+                                        <select id="cfgRoleComplex" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Junior Coder</label>
+                                        <select id="cfgRoleJunior" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Super Coder</label>
+                                        <select id="cfgRoleSuper" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Code Reviewer</label>
+                                        <select id="cfgRoleReviewer" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Tester</label>
+                                        <select id="cfgRoleTester" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">Models are loaded from Ollama and OpenCode. Select a model for each agent role.</p>
                             </div>
 
                             <div>
@@ -447,22 +464,7 @@ def serve_web_ui():
                                 </div>
                             </div>
 
-                            <div>
-                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-cloud mr-1"></i> OpenCode (Cloud)</h4>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">API Key</label>
-                                        <input type="password" id="cfgOpencodeKey" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Base URL</label>
-                                        <input type="text" id="cfgOpencodeUrl" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-700">
+                            <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-700">
                             <button onclick="closeSettings()" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button>
                             <button onclick="saveSettings()" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm font-medium">
                                 <i class="fas fa-save mr-1"></i> Save
@@ -891,20 +893,41 @@ def serve_web_ui():
                 modal.classList.add('flex');
 
                 try {
-                    const res = await fetch('/api/config');
-                    const cfg = await res.json();
+                    const [cfgRes, modelsRes] = await Promise.all([
+                        fetch('/api/config'),
+                        fetch('/api/models')
+                    ]);
+                    const cfg = await cfgRes.json();
+                    const modelsData = await modelsRes.json();
+
+                    const allModels = [...(modelsData.ollama || []), ...(modelsData.opencode || [])];
+                    const roleIds = ['cfgRoleClassifier', 'cfgRoleSimple', 'cfgRoleComplex', 'cfgRoleJunior', 'cfgRoleSuper', 'cfgRoleReviewer', 'cfgRoleTester'];
+                    roleIds.forEach(id => {
+                        const sel = document.getElementById(id);
+                        sel.innerHTML = '<option value="">— Select —</option>';
+                        allModels.forEach(m => {
+                            const opt = document.createElement('option');
+                            opt.value = m.name;
+                            opt.textContent = m.name + (m.source === 'opencode' ? ' (cloud)' : '');
+                            sel.appendChild(opt);
+                        });
+                    });
 
                     document.getElementById('cfgSandboxEnabled').checked = cfg.sandbox?.enabled !== false;
-                    document.getElementById('cfgModelClassifier').value = cfg.ollama_models?.classifier || '';
-                    document.getElementById('cfgModelSimple').value = cfg.ollama_models?.simple_agent || '';
-                    document.getElementById('cfgModelComplex').value = cfg.ollama_models?.complex_agent || '';
-                    document.getElementById('cfgModelReviewer').value = cfg.ollama_models?.code_reviewer || '';
                     document.getElementById('cfgOllamaUrl').value = cfg.ollama_base_url || '';
+
+                    const roles = cfg.agents?.roles || {};
+                    document.getElementById('cfgRoleClassifier').value = roles.classifier || '';
+                    document.getElementById('cfgRoleSimple').value = roles.simple_agent || '';
+                    document.getElementById('cfgRoleComplex').value = roles.complex_agent || '';
+                    document.getElementById('cfgRoleJunior').value = roles.junior_coder || '';
+                    document.getElementById('cfgRoleSuper').value = roles.super_coder || '';
+                    document.getElementById('cfgRoleReviewer').value = roles.code_reviewer || '';
+                    document.getElementById('cfgRoleTester').value = roles.tester || '';
+
                     document.getElementById('cfgGitUsername').value = cfg.git?.username || '';
                     document.getElementById('cfgGitToken').value = cfg.git?.token || '';
                     document.getElementById('cfgWorkspacePath').value = cfg.workspace?.base_path || '';
-                    document.getElementById('cfgOpencodeKey').value = cfg.opencode?.api_key || '';
-                    document.getElementById('cfgOpencodeUrl').value = cfg.opencode?.base_url || '';
                 } catch (e) {
                     console.error('Failed to load config:', e);
                 }
@@ -922,11 +945,17 @@ def serve_web_ui():
                         enabled: document.getElementById('cfgSandboxEnabled').checked,
                     },
                     ollama: {
-                        models: {
-                            classifier: document.getElementById('cfgModelClassifier').value,
-                            simple_agent: document.getElementById('cfgModelSimple').value,
-                            complex_agent: document.getElementById('cfgModelComplex').value,
-                            code_reviewer: document.getElementById('cfgModelReviewer').value,
+                        base_url: document.getElementById('cfgOllamaUrl').value,
+                    },
+                    agents: {
+                        roles: {
+                            classifier: document.getElementById('cfgRoleClassifier').value,
+                            simple_agent: document.getElementById('cfgRoleSimple').value,
+                            complex_agent: document.getElementById('cfgRoleComplex').value,
+                            junior_coder: document.getElementById('cfgRoleJunior').value,
+                            super_coder: document.getElementById('cfgRoleSuper').value,
+                            code_reviewer: document.getElementById('cfgRoleReviewer').value,
+                            tester: document.getElementById('cfgRoleTester').value,
                         },
                     },
                 };
@@ -941,14 +970,6 @@ def serve_web_ui():
 
                 const workspacePath = document.getElementById('cfgWorkspacePath').value;
                 if (workspacePath) data.workspace = { base_path: workspacePath };
-
-                const opencodeKey = document.getElementById('cfgOpencodeKey').value;
-                const opencodeUrl = document.getElementById('cfgOpencodeUrl').value;
-                if (opencodeKey || opencodeUrl) {
-                    data.opencode = {};
-                    if (opencodeKey) data.opencode.api_key = opencodeKey;
-                    if (opencodeUrl) data.opencode.base_url = opencodeUrl;
-                }
 
                 try {
                     const res = await fetch('/api/config', {
@@ -2263,6 +2284,47 @@ def get_running_tasks():
     return jsonify({'count': count})
 
 
+@app.route('/api/models', methods=['GET'])
+def get_available_models():
+    import requests as req
+    from ..core.config import config as app_config
+
+    models = {'ollama': [], 'opencode': []}
+
+    ollama_url = app_config.ollama.get('base_url', 'http://localhost:11434')
+    try:
+        resp = req.get(f'{ollama_url}/api/tags', timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            for m in data.get('models', []):
+                models['ollama'].append({
+                    'name': m['name'],
+                    'source': 'ollama',
+                })
+    except Exception:
+        pass
+
+    opencode_cfg = app_config.opencode
+    opencode_key = opencode_cfg.get('api_key', '')
+    opencode_url = opencode_cfg.get('base_url', 'https://api.opencode.ai')
+    if opencode_key and opencode_key != 'YOUR_OPENCODE_API_KEY':
+        try:
+            resp = req.get(f'{opencode_url}/v1/models', timeout=5, headers={
+                'Authorization': f'Bearer {opencode_key}',
+            })
+            if resp.status_code == 200:
+                data = resp.json()
+                for m in data.get('data', []):
+                    models['opencode'].append({
+                        'name': m['id'],
+                        'source': 'opencode',
+                    })
+        except Exception:
+            pass
+
+    return jsonify(models)
+
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     import yaml
@@ -2288,10 +2350,10 @@ def get_config():
                 'token': masked_token,
             },
             'test_mode': cfg.get('test_mode', {}).get('enabled', False),
-            'ollama_models': cfg.get('ollama', {}).get('models', {}),
             'ollama_base_url': cfg.get('ollama', {}).get('base_url', ''),
             'sandbox': cfg.get('sandbox', {}),
             'workspace': cfg.get('workspace', {}),
+            'agents': cfg.get('agents', {}),
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2315,10 +2377,15 @@ def update_config():
             o = data['ollama']
             if 'base_url' in o:
                 cfg['ollama']['base_url'] = o['base_url']
-            if 'models' in o:
-                for k, v in o['models'].items():
+
+        if 'agents' in data:
+            a = data['agents']
+            if 'roles' in a:
+                if 'roles' not in cfg['agents']:
+                    cfg['agents']['roles'] = {}
+                for k, v in a['roles'].items():
                     if v:
-                        cfg['ollama']['models'][k] = v
+                        cfg['agents']['roles'][k] = v
 
         if 'sandbox' in data:
             s = data['sandbox']
