@@ -323,10 +323,35 @@ def serve_web_ui():
                         <div class="mb-4">
                             <div class="flex items-center justify-between mb-2">
                                 <span id="processingStatusBadge" class="px-3 py-1 rounded text-sm font-medium bg-blue-600">Queued</span>
-                                <span id="processingProgressText" class="text-sm text-gray-400">0%</span>
+                                <div class="flex items-center gap-3">
+                                    <span id="processingElapsed" class="text-sm text-gray-400 font-mono">00:00</span>
+                                    <span id="processingProgressText" class="text-sm text-gray-400">0%</span>
+                                </div>
                             </div>
                             <div class="w-full bg-gray-700 rounded-full h-2">
                                 <div id="processingProgressBar" class="bg-purple-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div id="processingStats" class="hidden mb-3 bg-gray-900 rounded-lg p-3 space-y-1">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">Model</span>
+                                <span id="statModel" class="text-purple-300 font-mono"></span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">Prompt Tokens</span>
+                                <span id="statPrompt" class="text-gray-300 font-mono"></span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">Completion Tokens</span>
+                                <span id="statCompletion" class="text-gray-300 font-mono"></span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">Total Tokens</span>
+                                <span id="statTotal" class="text-gray-300 font-mono"></span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">Duration</span>
+                                <span id="statDuration" class="text-gray-300 font-mono"></span>
                             </div>
                         </div>
                         <div id="processingLogContent" class="text-sm text-gray-300 font-mono bg-gray-900 p-3 rounded h-48 sm:h-64 overflow-y-auto space-y-1"></div>
@@ -1496,8 +1521,25 @@ def serve_web_ui():
                 if (window._pollInterval) {
                     clearInterval(window._pollInterval);
                 }
+                if (window._elapsedInterval) {
+                    clearInterval(window._elapsedInterval);
+                }
+
+                document.getElementById('processingStats').classList.add('hidden');
+                window._processingStartTime = Date.now();
+                window._elapsedInterval = setInterval(updateElapsed, 1000);
+                updateElapsed();
                 
                 pollTaskStatus(taskId);
+            }
+
+            function updateElapsed() {
+                const el = document.getElementById('processingElapsed');
+                if (!el || !window._processingStartTime) return;
+                const diff = Math.floor((Date.now() - window._processingStartTime) / 1000);
+                const m = Math.floor(diff / 60);
+                const s = diff % 60;
+                el.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
             }
 
             function hideProcessingModal() {
@@ -1507,6 +1549,10 @@ def serve_web_ui():
                 if (window._pollInterval) {
                     clearInterval(window._pollInterval);
                     window._pollInterval = null;
+                }
+                if (window._elapsedInterval) {
+                    clearInterval(window._elapsedInterval);
+                    window._elapsedInterval = null;
                 }
             }
 
@@ -1569,7 +1615,32 @@ def serve_web_ui():
                         if (status.status === 'completed' || status.status === 'error') {
                             clearInterval(window._pollInterval);
                             window._pollInterval = null;
+                            if (window._elapsedInterval) {
+                                clearInterval(window._elapsedInterval);
+                                window._elapsedInterval = null;
+                            }
                             loadTasks();
+
+                            if (status.model_used || status.token_stats) {
+                                const statsDiv = document.getElementById('processingStats');
+                                statsDiv.classList.remove('hidden');
+                                if (status.model_used) {
+                                    document.getElementById('statModel').textContent = status.model_used;
+                                }
+                                if (status.token_stats) {
+                                    const ts = status.token_stats;
+                                    document.getElementById('statPrompt').textContent = ts.prompt_tokens || ts.prompt || '-';
+                                    document.getElementById('statCompletion').textContent = ts.completion_tokens || ts.completion || '-';
+                                    document.getElementById('statTotal').textContent = ts.total_tokens || (ts.prompt_tokens || ts.prompt || 0) + (ts.completion_tokens || ts.completion || 0);
+                                }
+                                if (status.duration) {
+                                    document.getElementById('statDuration').textContent = status.duration.toFixed(1) + 's';
+                                } else {
+                                    const elapsed = document.getElementById('processingElapsed').textContent;
+                                    document.getElementById('statDuration').textContent = elapsed;
+                                }
+                            }
+
                             if (status.status === 'error') {
                                 const div = document.createElement('div');
                                 div.className = 'text-sm font-mono text-red-400 mt-2';

@@ -98,7 +98,7 @@ class BountyFactoryOrchestrator:
         for bounty in pending_bounties:
             self._process_bounty(bounty)
 
-    def _process_bounty(self, bounty: Dict[str, Any]) -> bool:
+    def _process_bounty(self, bounty: Dict[str, Any]) -> Dict[str, Any]:
         bounty_id = bounty['id']
         title = bounty['title']
 
@@ -122,21 +122,26 @@ class BountyFactoryOrchestrator:
             status = final_state.get("status", "")
             if status == "queued_for_review":
                 logger.info(f"Bounty {bounty_id} queued for review via graph")
-                return True
+                return {
+                    'success': True,
+                    'model_used': final_state.get('model_used', ''),
+                    'token_stats': final_state.get('token_stats', {}),
+                    'duration': final_state.get('duration', 0),
+                }
             elif status == "failed":
                 error = final_state.get("error", "Unknown error")
                 logger.warning(f"Bounty {bounty_id} failed in graph: {error}")
                 db.update_bounty_status(bounty_id, 'failed')
-                return False
+                return {'success': False, 'error': error}
             else:
                 db.update_bounty_status(bounty_id, 'error')
-                return False
+                return {'success': False, 'error': f'Unexpected status: {status}'}
 
         except Exception as e:
             logger.error(f"Failed to process bounty {bounty_id}: {e}")
             db.update_bounty_status(bounty_id, 'error')
             db.log_processing(bounty_id, 'orchestrator', 'error', 'error', str(e))
-            return False
+            return {'success': False, 'error': str(e)}
 
     def submit_pr(self, review_id: int) -> Optional[str]:
         reviews = db.get_pending_reviews()
@@ -217,8 +222,14 @@ class BountyFactoryOrchestrator:
         if not bounty:
             return {'success': False, 'error': 'Bounty not found'}
 
-        success = self._process_bounty(bounty)
-        return {'success': success, 'bounty_id': bounty_id}
+        result = self._process_bounty(bounty)
+        return {
+            'success': result.get('success', False),
+            'bounty_id': bounty_id,
+            'model_used': result.get('model_used', ''),
+            'token_stats': result.get('token_stats', {}),
+            'duration': result.get('duration', 0),
+        }
 
     def manual_scan(
         self,

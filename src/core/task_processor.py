@@ -201,11 +201,14 @@ class TaskProcessor:
         if result:
             if result.get('model_used'):
                 self._log(task_id, 'model', f"Model: {result['model_used']}")
+                self._status[task_id]['model_used'] = result['model_used']
             if result.get('token_stats'):
                 stats = result['token_stats']
                 self._log(task_id, 'tokens', f"Prompt: {stats.get('prompt_tokens', '?')} | Completion: {stats.get('completion_tokens', '?')} | Total: {stats.get('total_tokens', '?')}")
+                self._status[task_id]['token_stats'] = stats
             if result.get('duration'):
                 self._log(task_id, 'duration', f"Processing time: {result['duration']:.1f}s")
+                self._status[task_id]['duration'] = result['duration']
 
         if result and result.get('success'):
             self._update_progress(task_id, 100, 'Complete - queued for review')
