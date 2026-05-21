@@ -262,7 +262,10 @@ def serve_web_ui():
                     </div>
 
                     <div id="panel-logs" class="p-4 hidden">
-                        <div class="flex gap-3 mb-4">
+                        <div class="flex flex-wrap gap-3 mb-4">
+                            <button onclick="goBackFromLogs()" id="logsBackBtn" class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-sm hidden">
+                                <i class="fas fa-arrow-left mr-1"></i> Back
+                            </button>
                             <input type="number" id="logFilterBountyId" placeholder="Filter by ID (e.g. 1, 2, 3...)" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-64">
                             <button onclick="loadLogs()" class="bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded text-sm">
                                 <i class="fas fa-sync mr-1"></i> Refresh Logs
@@ -517,6 +520,10 @@ def serve_web_ui():
                         panelEl.className = t === tab ? 'p-4' : 'p-4 hidden';
                     }
                 });
+                const backBtn = document.getElementById('logsBackBtn');
+                if (backBtn) {
+                    backBtn.classList.toggle('hidden', tab !== 'logs' || !window._previousTab);
+                }
                 if (tab === 'reviews') loadReviews();
                 if (tab === 'logs') loadLogs();
                 if (['new', 'processing', 'failed'].includes(tab)) applyFilters();
@@ -615,8 +622,14 @@ def serve_web_ui():
             }
 
             function viewTaskLogs(taskId) {
+                window._previousTab = currentTab;
                 document.getElementById('logFilterBountyId').value = taskId;
                 switchTab('logs');
+            }
+
+            function goBackFromLogs() {
+                const prev = window._previousTab || 'new';
+                switchTab(prev);
             }
 
             async function loadLogs() {
