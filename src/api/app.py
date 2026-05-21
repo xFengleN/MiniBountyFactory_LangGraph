@@ -514,11 +514,9 @@ def serve_web_ui():
         </div>
 
         <script>
-            console.log('Script loaded');
             let currentTab = 'new';
 
             function switchTab(tab) {
-                console.log('switchTab called with:', tab);
                 currentTab = tab;
                 const tabs = ['new', 'processing', 'failed', 'reviews', 'logs'];
                 tabs.forEach(t => {
@@ -829,7 +827,8 @@ def serve_web_ui():
                 try {
                     const res = await fetch('/api/tasks');
                     window.allTasks = await res.json();
-                    document.getElementById('taskCount').textContent = window.allTasks.length;
+                    const taskCountEl = document.getElementById('taskCount');
+                    if (taskCountEl) taskCountEl.textContent = window.allTasks.length;
                     applyFilters();
                 } catch (e) { console.error('Load tasks failed:', e); }
             }
