@@ -334,12 +334,12 @@ def serve_web_ui():
                 </div>
 
                 <div id="reviewDetailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
-                    <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl mx-auto sm:mx-4 max-h-[90vh] overflow-y-auto">
-                        <div class="flex justify-between items-center mb-4">
+                    <div class="bg-gray-800 rounded-lg w-full max-w-6xl mx-auto sm:mx-4 max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-700">
                             <h3 id="reviewDetailTitle" class="text-base sm:text-lg font-bold"><i class="fas fa-code mr-2"></i>Review Detail</h3>
                             <button onclick="closeReviewDetail()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
                         </div>
-                        <pre id="reviewDetailContent" class="bg-gray-900 p-3 sm:p-4 rounded text-xs font-mono whitespace-pre overflow-x-auto max-h-[70vh] overflow-y-auto"></pre>
+                        <div id="reviewDetailContent" class="flex-1 overflow-y-auto p-4 sm:p-6 min-h-[400px] max-h-[75vh]"></div>
                     </div>
                 </div>
 
@@ -1203,21 +1203,154 @@ def serve_web_ui():
             function showReviewDiff(id) {
                 const r = window._reviewsData[id];
                 if (!r) return;
+                document.getElementById('reviewDetailTitle').innerHTML = '<i class="fas fa-code mr-2"></i>Code Diff - ' + (r.title || '');
+                const container = document.getElementById('reviewDetailContent');
+                container.innerHTML = renderDiff(r.diff_content || 'No diff available');
                 const modal = document.getElementById('reviewDetailModal');
-                document.getElementById('reviewDetailTitle').textContent = 'Code Diff - ' + (r.title || '');
-                const pre = document.getElementById('reviewDetailContent');
-                pre.textContent = r.diff_content || 'No diff available';
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
+            }
+
+            function renderDiff(diffText) {
+                if (!diffText || diffText === 'No diff available') {
+                    return '<div class="text-gray-400 text-center py-8">' + diffText + '</div>';
+                }
+
+                const files = parseDiffFiles(diffText);
+                let html = '<div class="space-y-4">';
+                html += '<div class="flex items-center justify-between text-sm text-gray-400 mb-2">';
+                html += '<span>' + files.length + ' file(s) changed</span>';
+                html += '<div class="flex gap-3"><span class="flex items-center gap-1"><span class="w-3 h-3 bg-green-900/60 border border-green-700 inline-block"></span> Added</span>';
+                html += '<span class="flex items-center gap-1"><span class="w-3 h-3 bg-red-900/60 border border-red-700 inline-block"></span> Removed</span></div>';
+                html += '</div>';
+
+                files.forEach((file, idx) => {
+                    const addedCount = file.lines.filter(l => l.type === 'add').length;
+                    const removedCount = file.lines.filter(l => l.type === 'remove').length;
+                    html += '<div class="border border-gray-700 rounded-lg overflow-hidden">';
+                    html += '<div class="bg-gray-750 px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-gray-700" onclick="toggleDiffFile(' + idx + ')">';
+                    html += '<div class="flex items-center gap-3">';
+                    html += '<i id="fileArrow' + idx + '" class="fas fa-chevron-down text-gray-400 transition-transform"></i>';
+                    html += '<i class="fas fa-file-code text-gray-500"></i>';
+                    html += '<span class="font-mono text-sm text-gray-300">' + escapeHtml(file.path) + '</span>';
+                    html += '</div>';
+                    html += '<div class="flex items-center gap-3 text-xs">';
+                    if (addedCount > 0) html += '<span class="text-green-400">+' + addedCount + '</span>';
+                    if (removedCount > 0) html += '<span class="text-red-400">-' + removedCount + '</span>';
+                    html += '</div></div>';
+
+                    html += '<div id="fileContent' + idx + '" class="overflow-x-auto">';
+                    html += '<table class="w-full text-xs font-mono">';
+                    html += '<tbody>';
+
+                    let lineNum = 0;
+                    file.lines.forEach(line => {
+                        if (line.type === 'context' || line.type === 'add' || line.type === 'remove') {
+                            lineNum++;
+                            const rowClass = line.type === 'add' ? 'bg-green-900/30' : line.type === 'remove' ? 'bg-red-900/30' : '';
+                            const numColor = line.type === 'add' ? 'text-green-600' : line.type === 'remove' ? 'text-red-600' : 'text-gray-600';
+                            const prefix = line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' ';
+                            const prefixColor = line.type === 'add' ? 'text-green-400' : line.type === 'remove' ? 'text-red-400' : 'text-gray-500';
+                            html += '<tr class="' + rowClass + '">';
+                            html += '<td class="select-none text-right pr-3 pl-3 ' + numColor + ' w-12 border-r border-gray-700/50">' + lineNum + '</td>';
+                            html += '<td class="pl-2 pr-4 py-0.5 ' + prefixColor + ' select-none w-4">' + prefix + '</td>';
+                            html += '<td class="pl-2 py-0.5 whitespace-pre">' + highlightCode(escapeHtml(line.content)) + '</td>';
+                            html += '</tr>';
+                        } else if (line.type === 'hunk') {
+                            html += '<tr class="bg-gray-750">';
+                            html += '<td colspan="3" class="px-3 py-1 text-gray-400 select-none">' + escapeHtml(line.content) + '</td>';
+                            html += '</tr>';
+                        } else if (line.type === 'header') {
+                            html += '<tr class="bg-gray-750">';
+                            html += '<td colspan="3" class="px-3 py-1 text-purple-400 select-none font-bold">' + escapeHtml(line.content) + '</td>';
+                            html += '</tr>';
+                        }
+                    });
+
+                    html += '</tbody></table></div></div>';
+                });
+
+                html += '</div>';
+                return html;
+            }
+
+            function parseDiffFiles(diffText) {
+                const files = [];
+                let currentFile = null;
+                const lines = diffText.split('\n');
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+
+                    if (line.startsWith('diff --git ')) {
+                        if (currentFile) files.push(currentFile);
+                        const match = line.match(/diff --git a\/(.*) b\/(.*)/);
+                        currentFile = {
+                            path: match ? match[2] : 'unknown',
+                            lines: []
+                        };
+                        currentFile.lines.push({ type: 'header', content: line });
+                    } else if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+                        if (currentFile) {
+                            currentFile.lines.push({ type: 'header', content: line });
+                        }
+                    } else if (line.startsWith('@@')) {
+                        if (currentFile) {
+                            currentFile.lines.push({ type: 'hunk', content: line });
+                        }
+                    } else if (line.startsWith('+')) {
+                        if (currentFile) {
+                            currentFile.lines.push({ type: 'add', content: line.substring(1) });
+                        }
+                    } else if (line.startsWith('-')) {
+                        if (currentFile) {
+                            currentFile.lines.push({ type: 'remove', content: line.substring(1) });
+                        }
+                    } else {
+                        if (currentFile) {
+                            currentFile.lines.push({ type: 'context', content: line });
+                        }
+                    }
+                }
+
+                if (currentFile) files.push(currentFile);
+                return files;
+            }
+
+            function toggleDiffFile(idx) {
+                const content = document.getElementById('fileContent' + idx);
+                const arrow = document.getElementById('fileArrow' + idx);
+                if (content.style.display === 'none') {
+                    content.style.display = '';
+                    arrow.style.transform = '';
+                } else {
+                    content.style.display = 'none';
+                    arrow.style.transform = 'rotate(-90deg)';
+                }
+            }
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            function highlightCode(text) {
+                return text
+                    .replace(/\b(function|const|let|var|return|if|else|for|while|class|import|from|export|default|async|await|try|catch|new|this|self|def|print)\b/g, '<span class="text-purple-400">$1</span>')
+                    .replace(/\b(true|false|null|None|True|False|undefined|NaN)\b/g, '<span class="text-orange-400">$1</span>')
+                    .replace(/\b(\d+\.?\d*)\b/g, '<span class="text-cyan-400">$1</span>')
+                    .replace(/(["'`])(.*?)\1/g, '<span class="text-green-400">$1$2$1</span>')
+                    .replace(/(\/\/.*$|#.*$)/gm, '<span class="text-gray-500">$1</span>');
             }
 
             function showReviewComment(id) {
                 const r = window._reviewsData[id];
                 if (!r) return;
+                document.getElementById('reviewDetailTitle').innerHTML = '<i class="fas fa-comment mr-2"></i>Suggested Comment - ' + (r.title || '');
+                const container = document.getElementById('reviewDetailContent');
+                container.innerHTML = '<div class="bg-gray-900 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap text-gray-300">' + escapeHtml(r.review_notes || 'No comment available') + '</div>';
                 const modal = document.getElementById('reviewDetailModal');
-                document.getElementById('reviewDetailTitle').textContent = 'Suggested Comment - ' + (r.title || '');
-                const pre = document.getElementById('reviewDetailContent');
-                pre.textContent = r.review_notes || '';
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
             }
