@@ -1236,12 +1236,33 @@ def serve_web_ui():
             }
 
             async function processTask(id) {
+                // Live check for updates (assignment, claims, etc.)
                 const precheck = await fetch('/api/tasks/' + id + '/precheck').then(r => r.json());
+                
                 if (precheck.error) {
-                    alert('Pre-check failed: ' + precheck.error);
-                    return;
+                    if (!confirm('Pre-check error: ' + precheck.error + '\nProcess anyway?')) return;
+                } else {
+                    let msg = '';
+                    if (precheck.is_assigned && precheck.assignees.length > 0) {
+                        msg += '⚠️ Assigned to: ' + precheck.assignees.join(', ') + '\n';
+                    }
+                    if (precheck.recent_claims && precheck.recent_claims.length > 0) {
+                        msg += '⚠️ Recently claimed by: @' + precheck.recent_claims[0].user + ' (' + precheck.recent_claims[0].time + ')\n';
+                    }
+                    if (precheck.warnings && precheck.warnings.length > 0) {
+                        msg += '⚠️ Warnings: ' + precheck.warnings.join(', ') + '\n';
+                    }
+                    
+                    if (msg) {
+                        if (!confirm('Issue status update:\n\n' + msg + '\nProceed anyway?')) return;
+                    }
                 }
-                showPrecheckModal(id, precheck);
+                
+                if (!confirm('Start processing this task?')) return;
+                
+                const res = await fetch('/api/tasks/' + id + '/process', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) { alert('Task queued'); loadTasks(); } else { alert('Failed: ' + (data.error || 'Unknown')); }
             }
 
             function showPrecheckModal(taskId, precheck) {
