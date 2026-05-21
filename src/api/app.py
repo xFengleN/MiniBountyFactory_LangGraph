@@ -263,9 +263,6 @@ def serve_web_ui():
 
                     <div id="panel-logs" class="p-4 hidden">
                         <div class="flex flex-wrap gap-3 mb-4">
-                            <button onclick="goBackFromLogs()" id="logsBackBtn" class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-sm hidden">
-                                <i class="fas fa-arrow-left mr-1"></i> Back
-                            </button>
                             <input type="number" id="logFilterBountyId" placeholder="Filter by ID (e.g. 1, 2, 3...)" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-64">
                             <button onclick="loadLogs()" class="bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded text-sm">
                                 <i class="fas fa-sync mr-1"></i> Refresh Logs
@@ -341,6 +338,18 @@ def serve_web_ui():
                             <button onclick="closeReviewDetail()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
                         </div>
                         <pre id="reviewDetailContent" class="bg-gray-900 p-3 sm:p-4 rounded text-xs font-mono whitespace-pre overflow-x-auto max-h-[70vh] overflow-y-auto"></pre>
+                    </div>
+                </div>
+
+                <div id="taskLogsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
+                    <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl mx-auto sm:mx-4 max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 id="taskLogsTitle" class="text-base sm:text-lg font-bold"><i class="fas fa-terminal mr-2"></i>Task Logs</h3>
+                            <button onclick="closeTaskLogsModal()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div id="taskLogsContent" class="bg-gray-900 rounded p-4 flex-1 overflow-y-auto font-mono text-sm space-y-1 min-h-[400px] max-h-[70vh]">
+                            <div class="text-gray-400">Loading logs...</div>
+                        </div>
                     </div>
                 </div>
 
@@ -520,10 +529,6 @@ def serve_web_ui():
                         panelEl.className = t === tab ? 'p-4' : 'p-4 hidden';
                     }
                 });
-                const backBtn = document.getElementById('logsBackBtn');
-                if (backBtn) {
-                    backBtn.classList.toggle('hidden', tab !== 'logs' || !window._previousTab);
-                }
                 if (tab === 'reviews') loadReviews();
                 if (tab === 'logs') loadLogs();
                 if (['new', 'processing', 'failed'].includes(tab)) applyFilters();
@@ -622,14 +627,36 @@ def serve_web_ui():
             }
 
             function viewTaskLogs(taskId) {
-                window._previousTab = currentTab;
-                document.getElementById('logFilterBountyId').value = taskId;
-                switchTab('logs');
+                const modal = document.getElementById('taskLogsModal');
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                document.getElementById('taskLogsTitle').innerHTML = '<i class="fas fa-terminal mr-2"></i>Logs - Task #' + taskId;
+                document.getElementById('taskLogsContent').innerHTML = '<div class="text-gray-400">Loading logs...</div>';
+
+                fetch('/api/logs?bounty_id=' + taskId)
+                    .then(res => res.json())
+                    .then(logs => {
+                        const container = document.getElementById('taskLogsContent');
+                        if (!logs || logs.length === 0) {
+                            container.innerHTML = '<div class="text-gray-400">No logs found</div>';
+                            return;
+                        }
+                        container.innerHTML = logs.map(l => {
+                            const time = l.created_at ? new Date(l.created_at).toLocaleTimeString() : '';
+                            const details = l.details ? ' - ' + l.details : '';
+                            return '<div class="text-xs"><span class="text-gray-500">[' + time + ']</span> <span class="text-purple-400">[' + (l.agent_type || 'system') + ']</span> <span class="text-gray-300">' + l.action + '</span><span class="text-gray-500">' + details + '</span></div>';
+                        }).join('');
+                        container.scrollTop = container.scrollHeight;
+                    })
+                    .catch(e => {
+                        document.getElementById('taskLogsContent').innerHTML = '<div class="text-red-400">Failed to load logs: ' + e.message + '</div>';
+                    });
             }
 
-            function goBackFromLogs() {
-                const prev = window._previousTab || 'new';
-                switchTab(prev);
+            function closeTaskLogsModal() {
+                const modal = document.getElementById('taskLogsModal');
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
             }
 
             async function loadLogs() {
