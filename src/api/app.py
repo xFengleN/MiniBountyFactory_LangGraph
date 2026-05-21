@@ -514,9 +514,11 @@ def serve_web_ui():
         </div>
 
         <script>
+            console.log('Script loaded');
             let currentTab = 'new';
 
             function switchTab(tab) {
+                console.log('switchTab called with:', tab);
                 currentTab = tab;
                 const tabs = ['new', 'processing', 'failed', 'reviews', 'logs'];
                 tabs.forEach(t => {
@@ -1240,21 +1242,21 @@ def serve_web_ui():
                 const precheck = await fetch('/api/tasks/' + id + '/precheck').then(r => r.json());
                 
                 if (precheck.error) {
-                    if (!confirm('Pre-check error: ' + precheck.error + '\nProcess anyway?')) return;
+                    if (!confirm('Pre-check error: ' + precheck.error + '\\nProcess anyway?')) return;
                 } else {
                     let msg = '';
                     if (precheck.is_assigned && precheck.assignees.length > 0) {
-                        msg += '⚠️ Assigned to: ' + precheck.assignees.join(', ') + '\n';
+                        msg += '⚠️ Assigned to: ' + precheck.assignees.join(', ') + '\\n';
                     }
                     if (precheck.recent_claims && precheck.recent_claims.length > 0) {
-                        msg += '⚠️ Recently claimed by: @' + precheck.recent_claims[0].user + ' (' + precheck.recent_claims[0].time + ')\n';
+                        msg += '⚠️ Recently claimed by: @' + precheck.recent_claims[0].user + ' (' + precheck.recent_claims[0].time + ')\\n';
                     }
                     if (precheck.warnings && precheck.warnings.length > 0) {
-                        msg += '⚠️ Warnings: ' + precheck.warnings.join(', ') + '\n';
+                        msg += '⚠️ Warnings: ' + precheck.warnings.join(', ') + '\\n';
                     }
                     
                     if (msg) {
-                        if (!confirm('Issue status update:\n\n' + msg + '\nProceed anyway?')) return;
+                        if (!confirm('Issue status update:\\n\\n' + msg + '\\nProceed anyway?')) return;
                     }
                 }
                 
