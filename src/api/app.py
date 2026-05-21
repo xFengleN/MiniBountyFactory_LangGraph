@@ -400,14 +400,6 @@ def serve_web_ui():
                             </div>
 
                             <div>
-                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-brain mr-1"></i> Ollama</h4>
-                                <div>
-                                    <label class="block text-xs text-gray-400 mb-1">Base URL</label>
-                                    <input type="text" id="cfgOllamaUrl" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
-                                </div>
-                            </div>
-
-                            <div>
                                 <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-users mr-1"></i> Agents</h4>
                                 <div class="space-y-2">
                                     <div>
@@ -440,6 +432,29 @@ def serve_web_ui():
                                     </div>
                                 </div>
                                 <p class="text-xs text-gray-500 mt-2">Models are loaded from Ollama and OpenCode. Select a model for each agent role.</p>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-brain mr-1"></i> Ollama</h4>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Base URL</label>
+                                    <input type="text" id="cfgOllamaUrl" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-cloud mr-1"></i> OpenCode GO</h4>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">API Key</label>
+                                        <input type="password" id="cfgOpencodeKey" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Base URL</label>
+                                        <input type="text" id="cfgOpencodeUrl" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                    </div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">Configure OpenCode GO to access cloud models. API key and base URL are required.</p>
                             </div>
 
                             <div>
@@ -928,6 +943,8 @@ def serve_web_ui():
                     document.getElementById('cfgGitUsername').value = cfg.git?.username || '';
                     document.getElementById('cfgGitToken').value = cfg.git?.token || '';
                     document.getElementById('cfgWorkspacePath').value = cfg.workspace?.base_path || '';
+                    document.getElementById('cfgOpencodeKey').value = cfg.opencode?.api_key || '';
+                    document.getElementById('cfgOpencodeUrl').value = cfg.opencode?.base_url || '';
                 } catch (e) {
                     console.error('Failed to load config:', e);
                 }
@@ -970,6 +987,14 @@ def serve_web_ui():
 
                 const workspacePath = document.getElementById('cfgWorkspacePath').value;
                 if (workspacePath) data.workspace = { base_path: workspacePath };
+
+                const opencodeKey = document.getElementById('cfgOpencodeKey').value;
+                const opencodeUrl = document.getElementById('cfgOpencodeUrl').value;
+                if (opencodeKey || opencodeUrl) {
+                    data.opencode = {};
+                    if (opencodeKey) data.opencode.api_key = opencodeKey;
+                    if (opencodeUrl) data.opencode.base_url = opencodeUrl;
+                }
 
                 try {
                     const res = await fetch('/api/config', {
@@ -2288,6 +2313,8 @@ def get_running_tasks():
 def get_available_models():
     import requests as req
     from ..core.config import config as app_config
+    from ..utils.logger import get_logger
+    logger = get_logger(__name__)
 
     models = {'ollama': [], 'opencode': []}
 
@@ -2301,15 +2328,16 @@ def get_available_models():
                     'name': m['name'],
                     'source': 'ollama',
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f'Failed to fetch Ollama models: {e}')
 
     opencode_cfg = app_config.opencode
     opencode_key = opencode_cfg.get('api_key', '')
     opencode_url = opencode_cfg.get('base_url', 'https://api.opencode.ai')
-    if opencode_key and opencode_key != 'YOUR_OPENCODE_API_KEY':
+
+    if opencode_key and not opencode_key.startswith('YOUR'):
         try:
-            resp = req.get(f'{opencode_url}/v1/models', timeout=5, headers={
+            resp = req.get(f'{opencode_url}/v1/models', timeout=10, headers={
                 'Authorization': f'Bearer {opencode_key}',
             })
             if resp.status_code == 200:
@@ -2319,8 +2347,13 @@ def get_available_models():
                         'name': m['id'],
                         'source': 'opencode',
                     })
-        except Exception:
-            pass
+                logger.info(f'Loaded {len(data["data"])} OpenCode models')
+            else:
+                logger.warning(f'OpenCode models request failed: {resp.status_code} {resp.text[:200]}')
+        except Exception as e:
+            logger.warning(f'Failed to fetch OpenCode models: {e}')
+    else:
+        logger.info('OpenCode not configured, skipping model fetch')
 
     return jsonify(models)
 

@@ -22,12 +22,12 @@ opencode:
 agents:
   roles:
     classifier: qwen2.5:0.5b
-    simple_agent: qwen2.5-coder:7b-instruct-q4_K_M
-    complex_agent: qwen2.5-coder:7b-instruct-q4_K_M
-    junior_coder: qwen2.5-coder:3b-instruct-q4_K_M
+    simple_agent: llama3.2:3b
+    complex_agent: qwen3.5:9b
+    junior_coder: qwen2.5-coder:7b-instruct-q4_K_M
     super_coder: qwen2.5-coder:7b-instruct-q4_K_M
     code_reviewer: qwen2.5-coder:7b-instruct-q4_K_M
-    tester: qwen2.5-coder:3b-instruct-q4_K_M
+    tester: qwen2.5-coder:7b-instruct-q4_K_M
   simple_task_max_loc: 50
   simple_task_max_files: 3
   max_retries: 3
