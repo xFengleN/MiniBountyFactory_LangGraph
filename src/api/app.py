@@ -284,9 +284,11 @@ def serve_web_ui():
                 <div id="precheckModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
                     <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
                         <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-bold"><i class="fas fa-search mr-2"></i>Pre-Check Results</h3>
+                            <h3 class="text-lg font-bold"><i class="fas fa-search mr-2"></i><span id="precheckTaskTitle">Pre-Check Results</span></h3>
                             <button onclick="hidePrecheckModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
                         </div>
+
+                        <div id="precheckTaskInfo" class="text-sm text-gray-400 mb-3"></div>
 
                         <div id="precheckWarnings" class="space-y-2 mb-4"></div>
 
@@ -1237,33 +1239,8 @@ def serve_web_ui():
             }
 
             async function processTask(id) {
-                // Live check for updates (assignment, claims, etc.)
                 const precheck = await fetch('/api/tasks/' + id + '/precheck').then(r => r.json());
-                
-                if (precheck.error) {
-                    if (!confirm('Pre-check error: ' + precheck.error + '\\nProcess anyway?')) return;
-                } else {
-                    let msg = '';
-                    if (precheck.is_assigned && precheck.assignees.length > 0) {
-                        msg += '⚠️ Assigned to: ' + precheck.assignees.join(', ') + '\\n';
-                    }
-                    if (precheck.recent_claims && precheck.recent_claims.length > 0) {
-                        msg += '⚠️ Recently claimed by: @' + precheck.recent_claims[0].user + ' (' + precheck.recent_claims[0].time + ')\\n';
-                    }
-                    if (precheck.warnings && precheck.warnings.length > 0) {
-                        msg += '⚠️ Warnings: ' + precheck.warnings.join(', ') + '\\n';
-                    }
-                    
-                    if (msg) {
-                        if (!confirm('Issue status update:\\n\\n' + msg + '\\nProceed anyway?')) return;
-                    }
-                }
-                
-                if (!confirm('Start processing this task?')) return;
-                
-                const res = await fetch('/api/tasks/' + id + '/process', { method: 'POST' });
-                const data = await res.json();
-                if (data.success) { alert('Task queued'); loadTasks(); } else { alert('Failed: ' + (data.error || 'Unknown')); }
+                showPrecheckModal(id, precheck);
             }
 
             function showPrecheckModal(taskId, precheck) {
@@ -1271,36 +1248,76 @@ def serve_web_ui():
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
 
+                const task = window.allTasks.find(t => t.id === taskId);
+                const titleEl = document.getElementById('precheckTaskTitle');
+                const infoEl = document.getElementById('precheckTaskInfo');
+
+                if (task) {
+                    titleEl.textContent = (task.title || 'Task').replace(/</g, '&lt;');
+                    infoEl.innerHTML = `
+                        <span class="px-2 py-0.5 rounded bg-gray-600 font-mono text-xs mr-2">#${task.id}</span>
+                        <span class="mr-3">${task.repository_name || 'Unknown'}</span>
+                        ${task.price ? `<span class="text-amber-400">$${task.price}</span>` : ''}
+                    `;
+                } else {
+                    titleEl.textContent = 'Pre-Check Results';
+                    infoEl.innerHTML = '';
+                }
+
                 const warningsContainer = document.getElementById('precheckWarnings');
                 const commentBox = document.getElementById('precheckComment');
                 const contributingBox = document.getElementById('precheckContributing');
+                const proceedBtn = document.getElementById('precheckProceedBtn');
 
                 warningsContainer.innerHTML = '';
-                if (precheck.warnings && precheck.warnings.length > 0) {
-                    precheck.warnings.forEach(w => {
-                        const div = document.createElement('div');
-                        div.className = 'text-sm text-yellow-400 flex items-center gap-2';
-                        div.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${w}`;
-                        warningsContainer.appendChild(div);
-                    });
+
+                if (precheck.error) {
+                    const div = document.createElement('div');
+                    div.className = 'text-sm text-red-400 flex items-center gap-2';
+                    div.innerHTML = `<i class="fas fa-times-circle"></i> Pre-check error: ${precheck.error}`;
+                    warningsContainer.appendChild(div);
+                    proceedBtn.onclick = () => {
+                        hidePrecheckModal();
+                        proceedToProcess(taskId);
+                    };
                 } else {
-                    warningsContainer.innerHTML = '<div class="text-sm text-green-400"><i class="fas fa-check mr-1"></i> No issues detected</div>';
-                }
+                    let hasIssues = false;
 
-                if (precheck.is_assigned) {
-                    const assignBadge = document.createElement('span');
-                    assignBadge.className = 'px-2 py-1 rounded bg-red-600 text-white text-xs';
-                    assignBadge.textContent = 'Assigned to: ' + precheck.assignees.join(', ');
-                    warningsContainer.appendChild(assignBadge);
-                }
-
-                if (precheck.recent_claims && precheck.recent_claims.length > 0) {
-                    precheck.recent_claims.forEach(c => {
+                    if (precheck.is_assigned && precheck.assignees.length > 0) {
+                        hasIssues = true;
                         const div = document.createElement('div');
-                        div.className = 'text-sm text-orange-400';
-                        div.innerHTML = `<i class="fas fa-user mr-1"></i> @${c.user} claimed ${c.time}`;
+                        div.className = 'text-sm text-red-400 flex items-center gap-2';
+                        div.innerHTML = `<i class="fas fa-user-lock"></i> Assigned to: ${precheck.assignees.join(', ')}`;
                         warningsContainer.appendChild(div);
-                    });
+                    }
+
+                    if (precheck.recent_claims && precheck.recent_claims.length > 0) {
+                        hasIssues = true;
+                        precheck.recent_claims.forEach(c => {
+                            const div = document.createElement('div');
+                            div.className = 'text-sm text-orange-400 flex items-center gap-2';
+                            div.innerHTML = `<i class="fas fa-hand-paper"></i> @${c.user} claimed ${c.time}`;
+                            warningsContainer.appendChild(div);
+                        });
+                    }
+
+                    if (precheck.warnings && precheck.warnings.length > 0) {
+                        precheck.warnings.forEach(w => {
+                            const div = document.createElement('div');
+                            div.className = 'text-sm text-yellow-400 flex items-center gap-2';
+                            div.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${w}`;
+                            warningsContainer.appendChild(div);
+                        });
+                    }
+
+                    if (!hasIssues && (!precheck.warnings || precheck.warnings.length === 0)) {
+                        warningsContainer.innerHTML = '<div class="text-sm text-green-400"><i class="fas fa-check-circle mr-1"></i> Issue appears available - no conflicts detected</div>';
+                    }
+
+                    proceedBtn.onclick = () => {
+                        hidePrecheckModal();
+                        proceedToProcess(taskId);
+                    };
                 }
 
                 commentBox.value = precheck.suggested_comment || '';
@@ -1311,17 +1328,15 @@ def serve_web_ui():
                 } else {
                     contributingBox.parentElement.classList.add('hidden');
                 }
+            }
 
-                document.getElementById('precheckProceedBtn').onclick = () => {
-                    hidePrecheckModal();
-                    
-                    const task = window.allTasks.find(t => t.id === taskId);
-                    if (task) task.processing_status = 'processing';
-                    applyFilters();
-                    
-                    showProcessingModal(taskId);
-                    fetch('/api/tasks/' + taskId + '/process', { method: 'POST' });
-                };
+            function proceedToProcess(taskId) {
+                const task = window.allTasks.find(t => t.id === taskId);
+                if (task) task.processing_status = 'processing';
+                applyFilters();
+
+                showProcessingModal(taskId);
+                fetch('/api/tasks/' + taskId + '/process', { method: 'POST' });
             }
 
             function hidePrecheckModal() {
