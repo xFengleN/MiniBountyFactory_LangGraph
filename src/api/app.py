@@ -131,14 +131,11 @@ def serve_web_ui():
                         <button onclick="switchTab('processing')" id="tab-processing" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
                             <i class="fas fa-spinner mr-1 sm:mr-2"></i>Processing <span id="count-processing" class="ml-1 text-xs bg-yellow-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('queued_for_review')" id="tab-queued_for_review" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
-                            <i class="fas fa-clipboard-check mr-1 sm:mr-2"></i>Review <span id="count-queued_for_review" class="ml-1 text-xs bg-purple-600 px-2 py-0.5 rounded-full">0</span>
-                        </button>
                         <button onclick="switchTab('failed')" id="tab-failed" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
                             <i class="fas fa-exclamation-triangle mr-1 sm:mr-2"></i>Failed <span id="count-failed" class="ml-1 text-xs bg-red-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
                         <button onclick="switchTab('reviews')" id="tab-reviews" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
-                            <i class="fas fa-clipboard-list mr-1 sm:mr-2"></i>Pending Reviews <span id="count-reviews" class="ml-1 text-xs bg-green-600 px-2 py-0.5 rounded-full">0</span>
+                            <i class="fas fa-clipboard-check mr-1 sm:mr-2"></i>Pending Reviews <span id="count-reviews" class="ml-1 text-xs bg-green-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
                         <button onclick="switchTab('logs')" id="tab-logs" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
                             <i class="fas fa-terminal mr-1 sm:mr-2"></i>Logs
@@ -224,12 +221,6 @@ def serve_web_ui():
                         </div>
                     </div>
 
-                    <div id="panel-queued_for_review" class="p-4 hidden">
-                        <div id="queuedForReviewList" class="space-y-3">
-                            <div class="text-gray-400">No tasks queued for review</div>
-                        </div>
-                    </div>
-
                     <div id="panel-failed" class="p-4 hidden">
                         <div class="flex flex-wrap gap-3 mb-4 pb-3 border-b border-gray-700 items-end">
                             <div>
@@ -254,6 +245,17 @@ def serve_web_ui():
                     </div>
 
                     <div id="panel-reviews" class="p-4 hidden">
+                        <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-700">
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">Sort By</label>
+                                <select id="sortByReviews" onchange="loadReviews()" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm">
+                                    <option value="finished_desc">Finished (Newest)</option>
+                                    <option value="finished_asc">Finished (Oldest)</option>
+                                    <option value="created_desc">Created (Newest)</option>
+                                    <option value="created_asc">Created (Oldest)</option>
+                                </select>
+                            </div>
+                        </div>
                         <div id="reviewsList" class="space-y-3">
                             <div class="text-gray-400">No pending reviews</div>
                         </div>
@@ -504,12 +506,12 @@ def serve_web_ui():
 
             function switchTab(tab) {
                 currentTab = tab;
-                const tabs = ['new', 'processing', 'queued_for_review', 'failed', 'reviews', 'logs'];
+                const tabs = ['new', 'processing', 'failed', 'reviews', 'logs'];
                 tabs.forEach(t => {
                     const tabEl = document.getElementById('tab-' + t);
                     const panelEl = document.getElementById('panel-' + t);
                     if (tabEl) {
-                        tabEl.className = t === tab ? 'tab-active px-6 py-3 font-medium' : 'px-6 py-3 font-medium text-gray-400';
+                        tabEl.className = t === tab ? 'tab-active px-3 sm:px-6 py-3 font-medium whitespace-nowrap text-sm' : 'px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm';
                     }
                     if (panelEl) {
                         panelEl.className = t === tab ? 'p-4' : 'p-4 hidden';
@@ -517,7 +519,7 @@ def serve_web_ui():
                 });
                 if (tab === 'reviews') loadReviews();
                 if (tab === 'logs') loadLogs();
-                if (['new', 'processing', 'queued_for_review', 'failed'].includes(tab)) applyFilters();
+                if (['new', 'processing', 'failed'].includes(tab)) applyFilters();
             }
 
             function closeScanModal() {
@@ -921,7 +923,6 @@ def serve_web_ui():
                     const st = normalizeStatus(t.processing_status);
                     if (st === 'new') return 'new';
                     if (st === 'processing') return 'processing';
-                    if (st === 'queued_for_review') return 'queued_for_review';
                     if (isFailed(t)) return 'failed';
                     return 'other';
                 }
@@ -937,7 +938,7 @@ def serve_web_ui():
                     return true;
                 }
 
-                const groups = { new: [], processing: [], queued_for_review: [], failed: [] };
+                const groups = { new: [], processing: [], failed: [] };
                 window.allTasks.forEach(t => {
                     const g = taskGroup(t);
                     if (groups[g] && filterTask(t)) {
@@ -964,13 +965,11 @@ def serve_web_ui():
 
                 sortTasks(groups.new, sortBy);
                 sortTasks(groups.processing, sortBy);
-                sortTasks(groups.queued_for_review, sortBy);
                 sortTasks(groups.failed, sortByFailed);
 
                 // Update counts
                 document.getElementById('count-new').textContent = groups.new.length;
                 document.getElementById('count-processing').textContent = groups.processing.length;
-                document.getElementById('count-queued_for_review').textContent = groups.queued_for_review.length;
                 document.getElementById('count-failed').textContent = groups.failed.length;
 
                 // Render current tab
@@ -1070,7 +1069,6 @@ def serve_web_ui():
 
                 renderList('tasksList', groups.new, true);
                 renderList('processingList', groups.processing, false);
-                renderList('queuedForReviewList', groups.queued_for_review, false);
                 renderList('failedList', groups.failed, false);
 
                 const filteredCount = groups.new.length;
@@ -1082,13 +1080,30 @@ def serve_web_ui():
             async function loadReviews() {
                 try {
                     const res = await fetch('/api/reviews?status=pending');
-                    const reviews = await res.json();
+                    let reviews = await res.json();
                     const container = document.getElementById('reviewsList');
                     if (reviews.length === 0) { container.innerHTML = '<div class="text-gray-400">No pending reviews</div>'; return; }
                     
                     document.getElementById('count-reviews').textContent = reviews.length;
                     
                     window._reviewsData = {};
+                    
+                    // Sort reviews
+                    const sortBy = document.getElementById('sortByReviews').value;
+                    reviews.sort((a, b) => {
+                        const aFinished = new Date(a.reviewed_at || a.updated_at || 0);
+                        const bFinished = new Date(b.reviewed_at || b.updated_at || 0);
+                        const aCreated = new Date(a.created_at || 0);
+                        const bCreated = new Date(b.created_at || 0);
+                        
+                        switch (sortBy) {
+                            case 'finished_desc': return bFinished - aFinished;
+                            case 'finished_asc': return aFinished - bFinished;
+                            case 'created_desc': return bCreated - aCreated;
+                            case 'created_asc': return aCreated - bCreated;
+                            default: return 0;
+                        }
+                    });
                     
                     container.innerHTML = '';
                     reviews.forEach(r => {
