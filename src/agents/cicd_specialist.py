@@ -107,6 +107,13 @@ class CicdSpecialist:
         result['validation'] = validation
         result['validation_passed'] = validation.get('overall', False)
 
+        head_before = ''
+        try:
+            r = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=repo_path, capture_output=True, text=True)
+            head_before = r.stdout.strip()
+        except Exception:
+            pass
+
         cycle = 0
         while not validation.get('overall', False) and cycle < MAX_FIX_CYCLES:
             cycle += 1
@@ -119,13 +126,18 @@ class CicdSpecialist:
             fix_output = self._generate_test_fix(repo_path, repo_map, failures, title, cycle)
             if not fix_output:
                 logger.warning(f"Fix generation failed on cycle {cycle}")
+                if head_before:
+                    subprocess.run(['git', 'reset', '--hard', head_before], cwd=repo_path, capture_output=True)
                 break
-
-            self._commit_fixes(repo_path, bounty_id, cycle)
 
             validation = self.test_runner.validate_fix(repo_path, repo_map, fix_output)
             result['validation'] = validation
             result['validation_passed'] = validation.get('overall', False)
+
+            if validation.get('overall', False):
+                self._commit_fixes(repo_path, bounty_id, cycle, 'passed')
+            elif head_before:
+                subprocess.run(['git', 'reset', '--hard', head_before], cwd=repo_path, capture_output=True)
 
         result['fix_cycles'] = cycle
 
@@ -227,11 +239,11 @@ Perform a thorough review."""
                 },
             }
 
-    def _commit_fixes(self, repo_path: str, bounty_id: int, cycle: int):
+    def _commit_fixes(self, repo_path: str, bounty_id: int, cycle: int, status: str = ''):
         try:
             subprocess.run(['git', 'add', '.'], cwd=repo_path, capture_output=True)
             subprocess.run(
-                ['git', 'commit', '-m', f'cicd: fix cycle {cycle} for bounty #{bounty_id}'],
+                ['git', 'commit', '-m', f'cicd: fix cycle {cycle} for bounty #{bounty_id} ({status})'],
                 cwd=repo_path, capture_output=True, text=True
             )
         except Exception as e:
