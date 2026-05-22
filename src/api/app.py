@@ -529,7 +529,56 @@ def serve_web_ui():
             </main>
         </div>
 
-        <div id="scanModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
+        <div id="startModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
+            <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md mx-auto sm:mx-4 max-h-[90vh] overflow-y-auto">
+                <h3 class="text-base sm:text-lg font-bold mb-4">Start Automated Mode</h3>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Source</label>
+                        <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="radio" name="startMode" value="free" id="startModeFree" checked class="accent-purple-500">
+                                <span class="text-sm">Free Tasks (GitHub)</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="radio" name="startMode" value="paid" id="startModePaid" class="accent-purple-500">
+                                <span class="text-sm">Paid Bounties (Algora)</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="radio" name="startMode" value="both" id="startModeBoth" class="accent-purple-500">
+                                <span class="text-sm">Both</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Price Range ($)</label>
+                        <div class="flex items-center space-x-2">
+                            <input type="number" id="startMinPrice" value="0" min="0" placeholder="min" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
+                            <span class="text-gray-400">to</span>
+                            <input type="number" id="startMaxPrice" value="0" min="0" placeholder="max" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">0 = no filter. Existing tasks outside range will be skipped.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Scan Interval (seconds)</label>
+                        <input type="number" id="startInterval" value="600" min="60" max="86400" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
+                        <p class="text-xs text-gray-500 mt-1">Default 600s (10 min). Time between cycles.</p>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button onclick="closeStartModal()" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm min-h-[44px]">Cancel</button>
+                    <button onclick="executeStart()" id="executeStartBtn" class="bg-green-700 hover:bg-green-600 px-4 py-2 rounded text-sm min-h-[44px]">
+                        <i class="fas fa-play mr-1"></i> Start
+                    </button>
+                </div>
+            </div>
+        </div>
+
+                        <div id="scanModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
             <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-md mx-auto sm:mx-4 max-h-[90vh] overflow-y-auto">
                 <h3 class="text-base sm:text-lg font-bold mb-4">Scan for Tasks</h3>
 
@@ -1093,10 +1142,59 @@ def serve_web_ui():
                 const status = await statusRes.json();
                 if (status.running) {
                     await fetch('/api/stop', {method: 'POST'});
+                    refreshStatus();
                 } else {
-                    await fetch('/api/start', {method: 'POST'});
+                    openStartModal();
                 }
-                refreshStatus();
+            }
+
+            function openStartModal() {
+                // Pre-fill with current config if available
+                fetch('/api/start/config').then(r => r.json()).then(cfg => {
+                    if (cfg.mode) {
+                        document.querySelector('input[name="startMode"][value="' + cfg.mode + '"]').checked = true;
+                        document.getElementById('startMinPrice').value = cfg.min_price || 0;
+                        document.getElementById('startMaxPrice').value = cfg.max_price || 0;
+                        document.getElementById('startInterval').value = cfg.scan_interval || 600;
+                    }
+                }).catch(() => {});
+                document.getElementById('startModal').classList.remove('hidden');
+                document.getElementById('startModal').classList.add('flex');
+            }
+
+            function closeStartModal() {
+                document.getElementById('startModal').classList.add('hidden');
+                document.getElementById('startModal').classList.remove('flex');
+            }
+
+            async function executeStart() {
+                const mode = document.querySelector('input[name="startMode"]:checked').value;
+                const minPrice = parseInt(document.getElementById('startMinPrice').value) || 0;
+                const maxPrice = parseInt(document.getElementById('startMaxPrice').value) || 0;
+                const interval = parseInt(document.getElementById('startInterval').value) || 600;
+
+                const btn = document.getElementById('executeStartBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Starting...';
+
+                try {
+                    await fetch('/api/start', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            mode: mode,
+                            min_price: minPrice,
+                            max_price: maxPrice,
+                            scan_interval: interval,
+                        })
+                    });
+                    closeStartModal();
+                    refreshStatus();
+                } catch (e) {
+                    alert('Failed to start: ' + e.message);
+                }
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play mr-1"></i> Start';
             }
 
             async function toggleSandbox() {
@@ -2111,7 +2209,7 @@ def serve_web_ui():
                     refreshAll();
                 } catch (e) { alert('Delete failed: ' + e.message); }
             }
-            async function startSystem() { await fetch('/api/start', {method: 'POST'}); refreshStatus(); }
+            async function startSystem() { openStartModal(); }
             async function stopSystem() { await fetch('/api/stop', {method: 'POST'}); refreshStatus(); }
             function toggleSelectAll() {
                 const checked = document.getElementById('selectAll').checked;
@@ -2695,12 +2793,20 @@ def delete_review(review_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/start/config', methods=['GET'])
+def get_start_config():
+    if not orchestrator:
+        return jsonify({'error': 'Orchestrator not initialized'}), 500
+    return jsonify(orchestrator.get_start_config())
+
+
 @app.route('/api/start', methods=['POST'])
 def start_orchestrator():
     if not orchestrator:
         return jsonify({'error': 'Orchestrator not initialized'}), 500
 
-    orchestrator.start()
+    data = request.get_json() or {}
+    orchestrator.start(**data)
 
     return jsonify({'success': True, 'message': 'Orchestrator started'})
 

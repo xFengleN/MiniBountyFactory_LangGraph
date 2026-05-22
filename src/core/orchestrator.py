@@ -38,10 +38,24 @@ class BountyFactoryOrchestrator:
 
         self.running = False
         self.worker_thread = None
-        self.fetch_interval = config.get('agents.fetch_interval', 300)
+        self.fetch_interval = config.get('agents.fetch_interval', 600)
+        self.start_config = {
+            'mode': 'free',
+            'min_price': 0,
+            'max_price': 0,
+            'scan_interval': 600,
+        }
 
-    def start(self):
+    def get_start_config(self) -> Dict[str, Any]:
+        return dict(self.start_config)
+
+    def start(self, **kwargs):
         logger.info("Starting Bounty Factory Orchestrator")
+        self.start_config['mode'] = kwargs.get('mode', 'free')
+        self.start_config['min_price'] = int(kwargs.get('min_price', 0))
+        self.start_config['max_price'] = int(kwargs.get('max_price', 0))
+        self.start_config['scan_interval'] = int(kwargs.get('scan_interval', 600))
+        self.fetch_interval = self.start_config['scan_interval']
         self.running = True
         max_concurrent = config.get('agents.max_concurrent_tasks', 1)
         task_processor.start(max_concurrent=max_concurrent)
@@ -49,7 +63,7 @@ class BountyFactoryOrchestrator:
         self.worker_thread = threading.Thread(target=self._run_worker, daemon=True)
         self.worker_thread.start()
 
-        logger.info("Bounty Factory started")
+        logger.info(f"Bounty Factory started (mode={self.start_config['mode']}, price=${self.start_config['min_price']}-${self.start_config['max_price']}, interval={self.fetch_interval}s)")
 
     def stop(self):
         if not self.running:
@@ -86,19 +100,53 @@ class BountyFactoryOrchestrator:
 
     def _process_cycle(self):
         logger.info("Starting processing cycle")
+        cfg = self.start_config
 
         db.cleanup_stale_tasks(days=30)
         db.cleanup_old_logs(days=30)
 
-        if self.github_scout.is_available():
-            logger.info("Fetching issues from GitHub...")
-            gh_count = self.github_scout.fetch_and_store()
-            logger.info(f"Fetched {gh_count} issues from GitHub")
+        if cfg['mode'] in ('paid', 'both'):
+            logger.info("Fetching paid bounties from Algora...")
+            algora_bounties = self.algora_client.fetch_bounties(limit=50)
+            min_p = cfg['min_price']
+            max_p = cfg['max_price']
+            if min_p > 0 or max_p > 0:
+                filtered = []
+                for b in algora_bounties:
+                    price = b.get('price')
+                    if price is None:
+                        continue
+                    if min_p > 0 and price < min_p:
+                        continue
+                    if max_p > 0 and price > max_p:
+                        continue
+                    filtered.append(b)
+                algora_bounties = filtered
+            if algora_bounties:
+                self.github_scout.store_issues(algora_bounties)
+                logger.info(f"Stored {len(algora_bounties)} paid bounties")
+
+        if cfg['mode'] in ('free', 'both'):
+            if self.github_scout.is_available():
+                logger.info("Fetching free issues from GitHub...")
+                gh_count = self.github_scout.fetch_and_store()
+                logger.info(f"Fetched {gh_count} issues from GitHub")
 
         pending_bounties = db.get_pending_bounties()
+        min_p = cfg['min_price']
+        max_p = cfg['max_price']
+        if min_p > 0 or max_p > 0:
+            pending_bounties = [
+                b for b in pending_bounties
+                if b.get('price') is not None
+                and (min_p <= 0 or b['price'] >= min_p)
+                and (max_p <= 0 or b['price'] <= max_p)
+            ]
         logger.info(f"Processing {len(pending_bounties)} pending bounties")
 
         for bounty in pending_bounties:
+            if not self.running:
+                break
             self._process_bounty(bounty)
 
     def _process_bounty(self, bounty: Dict[str, Any]) -> Dict[str, Any]:
