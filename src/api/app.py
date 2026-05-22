@@ -870,7 +870,16 @@ def serve_web_ui():
             async function loadTasks() {
                 try {
                     const res = await fetch('/api/tasks');
-                    window.allTasks = await res.json();
+                    let serverTasks = await res.json();
+                    const localProcessing = new Set(
+                        (window.allTasks || []).filter(t => t.processing_status === 'processing').map(t => t.id)
+                    );
+                    window.allTasks = serverTasks.map(t => {
+                        if (localProcessing.has(t.id) && t.processing_status !== 'processing') {
+                            t.processing_status = 'processing';
+                        }
+                        return t;
+                    });
                     const taskCountEl = document.getElementById('taskCount');
                     if (taskCountEl) taskCountEl.textContent = window.allTasks.length;
                     applyFilters();
@@ -1129,6 +1138,7 @@ def serve_web_ui():
                 }
 
                 function renderTaskCard(t, showCheckbox = true) {
+                    const elapsed = _computeElapsed(t);
                     return `
                     <div class="bg-gray-750 rounded-lg p-3 sm:p-4 border border-gray-700 hover:border-purple-500 transition ${isProcessing(t) ? 'border-yellow-500' : ''}">
                         <div class="flex flex-col sm:flex-row sm:items-start gap-3">
@@ -1150,7 +1160,7 @@ def serve_web_ui():
                             </div>
                             <div class="flex flex-wrap gap-2 sm:gap-2 sm:ml-2 shrink-0 sm:flex-nowrap">
                                 ${isUntouched(t) ? `<button onclick="processTask(${t.id})" class="bg-purple-600 hover:bg-purple-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-play mr-1"></i> Process</button>` : ''}
-                                ${isProcessing(t) ? `<button onclick="showProcessingModal(${t.id})" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-spinner fa-spin mr-1"></i> Processing</button>` : ''}
+                                ${isProcessing(t) ? `<span class="inline-flex items-center gap-2 px-3 py-2 sm:py-1.5 rounded bg-yellow-600/50 text-yellow-300 text-sm font-mono"><i class="fas fa-spinner fa-spin"></i> <span id="elapsed_${t.id}" class="tabular-nums">${elapsed}</span></span>` : ''}
                                 ${isProcessing(t) ? `<button onclick="resetTask(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Reset to New"><i class="fas fa-undo"></i></button>` : ''}
                                 ${isFailed(t) ? `<button onclick="retryTask(${t.id})" class="bg-blue-600 hover:bg-blue-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-redo mr-1"></i> Retry</button>` : ''}
                                 ${isFailed(t) ? `<button onclick="deleteFailedTask(${t.id})" class="bg-red-600 hover:bg-red-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Task"><i class="fas fa-trash mr-1"></i> Delete</button>` : ''}
@@ -1160,6 +1170,16 @@ def serve_web_ui():
                             </div>
                         </div>
                     </div>`;
+                }
+
+                function _computeElapsed(t) {
+                    const start = t.started_at || t.processing_started_at;
+                    if (!start) return '00:00';
+                    const diff = Math.floor((Date.now() - new Date(start).getTime()) / 1000);
+                    if (diff < 0) return '00:00';
+                    const m = Math.floor(diff / 60);
+                    const s = diff % 60;
+                    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
                 }
 
                 function renderList(containerId, tasks, showCheckbox = true) {
@@ -1540,7 +1560,7 @@ def serve_web_ui():
                 applyFilters();
 
                 showProcessingModal(taskId);
-                fetch('/api/tasks/' + taskId + '/process', { method: 'POST' });
+                fetch('/api/tasks/' + taskId + '/process', { method: 'POST' }).then(() => loadTasks());
             }
 
             function hidePrecheckModal() {
@@ -1881,6 +1901,15 @@ def serve_web_ui():
 
             setInterval(refreshAll, 3000);
             refreshAll();
+            setInterval(() => {
+                document.querySelectorAll('[id^="elapsed_"]').forEach(el => {
+                    const id = el.id.replace('elapsed_', '');
+                    const t = window.allTasks.find(x => x.id == id);
+                    if (t && (t.processing_status === 'processing' || t.processing_status === 'pending')) {
+                        el.textContent = _computeElapsed(t);
+                    }
+                });
+            }, 1000);
         </script>
     </body>
     </html>
@@ -2295,11 +2324,16 @@ def scan_tasks():
 
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
+    from ..core.task_processor import task_processor
     bounties = db.get_all_bounties()
     for b in bounties:
         for key in ('fetched_at', 'created_at', 'updated_at'):
             if b.get(key) and 'Z' not in str(b[key]) and '+' not in str(b[key]):
                 b[key] = str(b[key]) + '+00:00'
+        if b.get('processing_status') in ('processing', 'queued'):
+            tp_status = task_processor.get_status(str(b['id']))
+            if tp_status and tp_status.get('started_at'):
+                b['started_at'] = tp_status['started_at']
     return jsonify(bounties)
 
 
