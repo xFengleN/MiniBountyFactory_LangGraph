@@ -3,11 +3,9 @@ from langgraph.graph import StateGraph, END
 from .state import BountyState
 from .nodes import (
     precheck_node,
-    classify_node,
-    simple_agent_node,
-    complex_agent_node,
-    validate_node,
-    review_node,
+    dispatcher_node,
+    coder_node,
+    cicd_specialist_node,
     enqueue_review_node,
 )
 from ..utils.logger import get_logger
@@ -15,26 +13,21 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def route_by_complexity(state: BountyState) -> str:
-    classification = state.get("classification", "").lower()
-    if classification == "simple":
-        return "simple_agent"
-    return "complex_agent"
-
-
-def route_after_agent(state: BountyState) -> str:
+def route_after_dispatcher(state: BountyState) -> str:
     if state.get("error"):
         return "failed"
-    return "validate"
+    return "coder"
 
 
-def route_by_validation(state: BountyState) -> str:
-    if state.get("validation_passed", False):
-        return "review"
-    return "failed"
+def route_after_coder(state: BountyState) -> str:
+    if state.get("error"):
+        return "failed"
+    return "cicd_specialist"
 
 
-def route_by_review(state: BountyState) -> str:
+def route_after_cicd(state: BountyState) -> str:
+    if state.get("error"):
+        return "failed"
     if state.get("review_approved", False):
         return "enqueue_review"
     return "failed"
@@ -44,32 +37,22 @@ def build_graph() -> StateGraph:
     graph = StateGraph(BountyState)
 
     graph.add_node("precheck", precheck_node)
-    graph.add_node("classify", classify_node)
-    graph.add_node("simple_agent", simple_agent_node)
-    graph.add_node("complex_agent", complex_agent_node)
-    graph.add_node("validate", validate_node)
-    graph.add_node("review", review_node)
+    graph.add_node("dispatcher", dispatcher_node)
+    graph.add_node("coder", coder_node)
+    graph.add_node("cicd_specialist", cicd_specialist_node)
     graph.add_node("enqueue_review", enqueue_review_node)
 
     graph.set_entry_point("precheck")
-    graph.add_edge("precheck", "classify")
-    graph.add_conditional_edges("classify", route_by_complexity, {
-        "simple_agent": "simple_agent",
-        "complex_agent": "complex_agent",
-    })
-    graph.add_conditional_edges("simple_agent", route_after_agent, {
-        "validate": "validate",
+    graph.add_edge("precheck", "dispatcher")
+    graph.add_conditional_edges("dispatcher", route_after_dispatcher, {
+        "coder": "coder",
         "failed": END,
     })
-    graph.add_conditional_edges("complex_agent", route_after_agent, {
-        "validate": "validate",
+    graph.add_conditional_edges("coder", route_after_coder, {
+        "cicd_specialist": "cicd_specialist",
         "failed": END,
     })
-    graph.add_conditional_edges("validate", route_by_validation, {
-        "review": "review",
-        "failed": END,
-    })
-    graph.add_conditional_edges("review", route_by_review, {
+    graph.add_conditional_edges("cicd_specialist", route_after_cicd, {
         "enqueue_review": "enqueue_review",
         "failed": END,
     })

@@ -403,32 +403,20 @@ def serve_web_ui():
                                 <h4 class="text-sm font-bold text-purple-400 mb-2"><i class="fas fa-users mr-1"></i> Agents</h4>
                                 <div class="space-y-2">
                                     <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Classifier</label>
-                                        <select id="cfgRoleClassifier" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                        <label class="block text-xs text-gray-400 mb-1">Dispatcher <span class="text-gray-500">(classify + decompose)</span></label>
+                                        <select id="cfgRoleDispatcher" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
                                     </div>
                                     <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Simple Agent</label>
+                                        <label class="block text-xs text-gray-400 mb-1">Simple Coder <span class="text-gray-500">(was simple + junior)</span></label>
                                         <select id="cfgRoleSimple" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
                                     </div>
                                     <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Complex Agent</label>
-                                        <select id="cfgRoleComplex" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Junior Coder</label>
-                                        <select id="cfgRoleJunior" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Super Coder</label>
+                                        <label class="block text-xs text-gray-400 mb-1">Super Coder <span class="text-gray-500">(unchanged)</span></label>
                                         <select id="cfgRoleSuper" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
                                     </div>
                                     <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Code Reviewer</label>
-                                        <select id="cfgRoleReviewer" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Tester</label>
-                                        <select id="cfgRoleTester" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                        <label class="block text-xs text-gray-400 mb-1">CI/CD Specialist <span class="text-gray-500">(test + review)</span></label>
+                                        <select id="cfgRoleCicd" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
                                     </div>
                                 </div>
                                 <p class="text-xs text-gray-500 mt-2">Models are loaded from Ollama and OpenCode. Select a model for each agent role.</p>
@@ -925,7 +913,7 @@ def serve_web_ui():
                     const modelsData = await modelsRes.json();
 
                     const allModels = [...(modelsData.ollama || []), ...(modelsData.opencode || [])];
-                    const roleIds = ['cfgRoleClassifier', 'cfgRoleSimple', 'cfgRoleComplex', 'cfgRoleJunior', 'cfgRoleSuper', 'cfgRoleReviewer', 'cfgRoleTester'];
+                    const roleIds = ['cfgRoleDispatcher', 'cfgRoleSimple', 'cfgRoleSuper', 'cfgRoleCicd'];
                     roleIds.forEach(id => {
                         const sel = document.getElementById(id);
                         sel.innerHTML = '<option value="">— Select —</option>';
@@ -941,13 +929,10 @@ def serve_web_ui():
                     document.getElementById('cfgOllamaUrl').value = cfg.ollama_base_url || '';
 
                     const roles = cfg.agents?.roles || {};
-                    document.getElementById('cfgRoleClassifier').value = roles.classifier || '';
-                    document.getElementById('cfgRoleSimple').value = roles.simple_agent || '';
-                    document.getElementById('cfgRoleComplex').value = roles.complex_agent || '';
-                    document.getElementById('cfgRoleJunior').value = roles.junior_coder || '';
+                    document.getElementById('cfgRoleDispatcher').value = roles.dispatcher || '';
+                    document.getElementById('cfgRoleSimple').value = roles.simple_coder || '';
                     document.getElementById('cfgRoleSuper').value = roles.super_coder || '';
-                    document.getElementById('cfgRoleReviewer').value = roles.code_reviewer || '';
-                    document.getElementById('cfgRoleTester').value = roles.tester || '';
+                    document.getElementById('cfgRoleCicd').value = roles.cicd_specialist || '';
 
                     document.getElementById('cfgGitUsername').value = cfg.git?.username || '';
                     document.getElementById('cfgGitToken').value = cfg.git?.token || '';
@@ -975,13 +960,10 @@ def serve_web_ui():
                     },
                     agents: {
                         roles: {
-                            classifier: document.getElementById('cfgRoleClassifier').value,
-                            simple_agent: document.getElementById('cfgRoleSimple').value,
-                            complex_agent: document.getElementById('cfgRoleComplex').value,
-                            junior_coder: document.getElementById('cfgRoleJunior').value,
+                            dispatcher: document.getElementById('cfgRoleDispatcher').value,
+                            simple_coder: document.getElementById('cfgRoleSimple').value,
                             super_coder: document.getElementById('cfgRoleSuper').value,
-                            code_reviewer: document.getElementById('cfgRoleReviewer').value,
-                            tester: document.getElementById('cfgRoleTester').value,
+                            cicd_specialist: document.getElementById('cfgRoleCicd').value,
                         },
                     },
                 };

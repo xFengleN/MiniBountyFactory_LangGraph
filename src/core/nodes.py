@@ -1,29 +1,27 @@
 from typing import Dict, Any
 
 from .state import BountyState
-from ..agents.task_classifier import TaskClassifier
+from ..agents.dispatcher import Dispatcher
 from ..agents.github_checker import GitHubIssueChecker
 from ..agents.comment_generator import CommentGenerator
-from ..agents.simple_agent import SimpleTaskAgent
-from ..agents.complex_agent import ComplexTaskAgent
+from ..agents.simple_coder import SimpleCoder
+from ..agents.super_coder import SuperCoder
+from ..agents.cicd_specialist import CicdSpecialist
 from ..agents.repo_mapper import RepoMapper
-from ..agents.test_runner import TestRunner
-from ..agents.code_reviewer import CodeReviewAgent
 from .config import config
 from .database import db
-from .sandbox import run_sandbox_task, cleanup_workspace
+from .sandbox import run_sandbox_task
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-_classifier = TaskClassifier()
+_dispatcher = Dispatcher()
 _github_checker = GitHubIssueChecker(config.git.get('token'))
 _comment_generator = CommentGenerator()
-_simple_agent = SimpleTaskAgent()
-_complex_agent = ComplexTaskAgent()
+_simple_coder = SimpleCoder()
+_super_coder = SuperCoder()
+_cicd_specialist = CicdSpecialist()
 _repo_mapper = RepoMapper()
-_test_runner = TestRunner()
-_code_reviewer = CodeReviewAgent()
 
 
 def precheck_node(state: BountyState) -> dict:
@@ -55,214 +53,214 @@ def precheck_node(state: BountyState) -> dict:
     }
 
 
-def classify_node(state: BountyState) -> dict:
+def dispatcher_node(state: BountyState) -> dict:
     bounty = state["bounty"]
     bounty_id = state["bounty_id"]
 
-    logger.info(f"Node classify: bounty {bounty_id}")
-    db.log_processing(bounty_id, "classifier", "start", "processing")
+    logger.info(f"Node dispatcher: bounty {bounty_id}")
+    db.log_processing(bounty_id, "dispatcher", "start", "processing")
 
-    classification, confidence = _classifier.classify(bounty)
-    classification = classification.lower()
+    dispatch_result = _dispatcher.dispatch(bounty)
+    raw = dispatch_result.classification.lower()
+    if raw in ('simple', 'simple_coder'):
+        classification = 'simple'
+    elif raw in ('complex', 'complex_coder', 'complex_agent'):
+        classification = 'complex'
+    else:
+        classification = 'simple'
 
-    logger.info(f"Classification: {classification} (confidence: {confidence:.2f})")
-    db.log_processing(bounty_id, "classifier", f"{classification} ({confidence:.2f})", "processing")
+    logger.info(f"Dispatch: mode={dispatch_result.mode}, classification={classification}, confidence={dispatch_result.confidence:.2f}")
+    db.log_processing(bounty_id, "dispatcher", f"{classification} ({dispatch_result.confidence:.2f})", "processing")
+
+    subtasks = [s.model_dump() for s in dispatch_result.subtasks] if dispatch_result.subtasks else []
+
+    if subtasks:
+        role_counts = {}
+        for s in subtasks:
+            role = s.get('role', 'unknown')
+            role_counts[role] = role_counts.get(role, 0) + 1
+        summary = ', '.join(f'{v} {k}' for k, v in sorted(role_counts.items()))
+        db.log_processing(bounty_id, "dispatcher", f"decomposed into {len(subtasks)} subtasks: {summary}", "processing")
 
     return {
         "classification": classification,
-        "confidence": confidence,
+        "confidence": dispatch_result.confidence,
+        "dispatch_mode": dispatch_result.mode,
+        "subtasks": subtasks,
+        "dispatch_reasoning": dispatch_result.reasoning,
     }
 
 
-def simple_agent_node(state: BountyState) -> dict:
+def coder_node(state: BountyState) -> dict:
     bounty = state["bounty"]
     bounty_id = state["bounty_id"]
+    classification = state.get("classification", "simple")
+    subtasks = state.get("subtasks", [])
 
-    logger.info(f"Node simple_agent: bounty {bounty_id}")
-    db.log_processing(bounty_id, "simple_agent", "start", "processing")
+    logger.info(f"Node coder: bounty {bounty_id}, classification={classification}")
 
-    agents_config = config.agents
-    roles = agents_config.get('roles', {})
-    model = roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
-    result = run_sandbox_task(bounty, agent_type="simple", model=model)
+    if classification == "simple" or not subtasks:
+        db.log_processing(bounty_id, "coder", "simple mode", "processing")
+        model = config.agents.get('roles', {}).get('simple_coder', 'qwen2.5:0.5b')
+        result = run_sandbox_task(bounty, agent_type="simple", model=model)
 
-    if result is None:
-        logger.info("Sandbox unavailable, falling back to local simple agent")
-        result = _simple_agent.process_bounty(bounty)
+        if result is None:
+            logger.info("Sandbox unavailable, falling back to local simple coder")
+            result = _simple_coder.process(bounty)
 
-    if not result:
-        logger.warning(f"Simple agent returned no result for bounty {bounty_id}")
-        db.log_processing(bounty_id, "simple_agent", "no_result", "failed")
-        return {"error": "Simple agent failed to generate fix", "status": "failed"}
+        if not result:
+            logger.warning(f"Simple coder returned no result for bounty {bounty_id}")
+            db.log_processing(bounty_id, "coder", "no_result", "failed")
+            return {"error": "Simple coder failed to generate fix", "status": "failed"}
 
-    if not result.get("success", True):
-        error = result.get("error", "Unknown error")
-        logger.warning(f"Simple agent failed for bounty {bounty_id}: {error}")
-        db.log_processing(bounty_id, "simple_agent", f"failed: {error}", "failed")
-        return {"error": error, "status": "failed"}
+        if not result.get("success", True):
+            error = result.get("error", "Unknown error")
+            logger.warning(f"Simple coder failed for bounty {bounty_id}: {error}")
+            db.log_processing(bounty_id, "coder", f"failed: {error}", "failed")
+            return {"error": error, "status": "failed"}
 
-    if result.get("model_used"):
-        db.log_processing(bounty_id, "simple_agent", f"Model: {result['model_used']}", "processing")
-    if result.get("validation"):
-        db.log_processing(bounty_id, "simple_agent", "fix generated", "processing")
+        if result.get("model_used"):
+            db.log_processing(bounty_id, "coder", f"Model: {result['model_used']}", "processing")
+        db.log_processing(bounty_id, "coder", "fix generated", "processing")
 
-    db.log_processing(bounty_id, "simple_agent", "complete", "processing")
+        return {
+            "agent_type": "simple_coder",
+            "repo_path": result.get("repo_path", ""),
+            "branch_name": result.get("branch_name", ""),
+            "commit_sha": result.get("commit_sha", ""),
+            "diff_content": result.get("diff_content", ""),
+            "files_changed": result.get("files_changed", []),
+            "model_used": result.get("model_used", ""),
+            "token_stats": result.get("token_stats", {}),
+            "duration": result.get("duration", 0),
+            "validation": result.get("validation", {}),
+        }
 
-    return {
-        "agent_type": "simple",
-        "repo_path": result.get("repo_path", ""),
-        "branch_name": result.get("branch_name", ""),
-        "commit_sha": result.get("commit_sha", ""),
-        "diff_content": result.get("diff_content", ""),
-        "files_changed": result.get("files_changed", []),
-        "model_used": result.get("model_used", ""),
-        "token_stats": result.get("token_stats", {}),
-        "duration": result.get("duration", 0),
-        "validation": result.get("validation", {}),
-    }
+    db.log_processing(bounty_id, "coder", f"complex mode: {len(subtasks)} subtasks", "processing")
 
+    simple_subtasks = [s for s in subtasks if s.get('role') == 'simple_coder']
+    super_subtasks = [s for s in subtasks if s.get('role') == 'super_coder']
 
-def complex_agent_node(state: BountyState) -> dict:
-    bounty = state["bounty"]
-    bounty_id = state["bounty_id"]
+    all_files = []
+    repo_path = None
+    branch_name = f"bounty-fix-{bounty_id}"
+    commit_sha = None
+    final_diff = ""
 
-    logger.info(f"Node complex_agent: bounty {bounty_id}")
-    db.log_processing(bounty_id, "complex_agent", "start", "processing")
+    if simple_subtasks:
+        for subtask in simple_subtasks:
+            subtask_id = subtask.get('id')
+            subtask_desc = subtask.get('description', '')
+            logger.info(f"Coder running simple_coder subtask {subtask_id}")
 
-    agents_config = config.agents
-    roles = agents_config.get('roles', {})
-    model = roles.get('complex_agent', roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M'))
-    subtasks = _complex_agent.decomposer.decompose(bounty)
+            result = _simple_coder.process(bounty, subtask_description=subtask_desc)
+
+            if result:
+                all_files.extend(result.get('files_changed', []))
+                repo_path = result.get('repo_path', repo_path)
+                commit_sha = result.get('commit_sha', commit_sha)
+
+    if super_subtasks:
+        result = _super_coder.process(bounty, super_subtasks)
+        if result:
+            all_files.extend(result.get('files_changed', []))
+            repo_path = result.get('repo_path', repo_path)
+            commit_sha = result.get('commit_sha', commit_sha)
+
+    if not all_files:
+        logger.warning(f"No fix generated for complex bounty {bounty_id}")
+        db.log_processing(bounty_id, "coder", "no_result", "failed")
+        return {"error": "No subtask produced a fix", "status": "failed"}
+
+    if repo_path:
+        try:
+            import subprocess
+            diff_result = subprocess.run(
+                ['git', 'diff', 'HEAD~1', 'HEAD'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True
+            )
+            final_diff = diff_result.stdout
+        except Exception:
+            pass
 
     role_counts = {}
     for s in subtasks:
-        role = s.get('role', 'unknown')
-        role_counts[role] = role_counts.get(role, 0) + 1
-    summary = ', '.join(f'{v} {k}' for k, v in sorted(role_counts.items()))
-    db.log_processing(bounty_id, "complex_agent", "decompose", "processing",
-                      f"Decomposed into {len(subtasks)} subtasks: {summary}")
+        role_counts[s.get('role', 'unknown')] = role_counts.get(s.get('role', 'unknown'), 0) + 1
 
-    result = run_sandbox_task(
-        bounty,
-        agent_type="complex",
-        model=model,
-        subtasks=subtasks,
-    )
-
-    if result is None:
-        logger.info("Sandbox unavailable, falling back to local complex agent")
-        result = _complex_agent.process_bounty(bounty)
-
-    if not result:
-        logger.warning(f"Complex agent returned no result for bounty {bounty_id}")
-        db.log_processing(bounty_id, "complex_agent", "no_result", "failed")
-        return {"error": "Complex agent failed to generate fix", "status": "failed"}
-
-    if not result.get("success", True):
-        error = result.get("error", "Unknown error")
-        logger.warning(f"Complex agent failed for bounty {bounty_id}: {error}")
-        db.log_processing(bounty_id, "complex_agent", f"failed: {error}", "failed")
-        return {"error": error, "status": "failed"}
-
-    db.log_processing(bounty_id, "complex_agent", "complete", "processing")
+    db.log_processing(bounty_id, "coder", f"complete: {len(all_files)} files", "processing")
 
     return {
-        "agent_type": result.get("agent_type", "complex"),
-        "repo_path": result.get("repo_path", ""),
-        "branch_name": result.get("branch_name", ""),
-        "commit_sha": result.get("commit_sha", ""),
-        "diff_content": result.get("diff_content", ""),
-        "files_changed": result.get("files_changed", []),
-        "model_used": result.get("model_used", ""),
-        "token_stats": result.get("token_stats", {}),
-        "duration": result.get("duration", 0),
-        "validation": result.get("validation", {}),
+        "agent_type": "coder",
+        "repo_path": repo_path or "",
+        "branch_name": branch_name,
+        "commit_sha": commit_sha or "",
+        "diff_content": final_diff,
+        "files_changed": all_files,
+        "model_used": "",
+        "token_stats": {},
+        "duration": 0,
+        "subtasks_completed": len(subtasks),
     }
 
 
-def validate_node(state: BountyState) -> dict:
+def cicd_specialist_node(state: BountyState) -> dict:
     bounty = state["bounty"]
     bounty_id = state["bounty_id"]
     repo_path = state.get("repo_path", "")
-
-    if not repo_path:
-        logger.warning(f"No repo_path for validation, bounty {bounty_id}")
-        return {"validation_passed": True, "repo_map": {}, "validation": {"overall": True}}
-
-    logger.info(f"Node validate: bounty {bounty_id}")
-    db.log_processing(bounty_id, "validator", "start", "processing")
-
-    repo_map = _repo_mapper.map(repo_path)
-
-    if not repo_map:
-        logger.warning(f"Repo mapping failed for bounty {bounty_id}")
-        db.log_processing(bounty_id, "validator", "mapping_failed", "warning")
-        return {"validation_passed": True, "repo_map": {}, "validation": {"overall": True}}
-
-    validation = state.get("validation", {})
-    if validation and validation.get("overall") is not None:
-        db.log_processing(bounty_id, "validator", "passed (from sandbox)", "processing")
-        return {
-            "repo_map": repo_map,
-            "validation": validation,
-            "validation_passed": validation.get("overall", False),
-        }
-
-    fix_result = {
-        "files": state.get("files_changed", []),
-        "diff_content": state.get("diff_content", ""),
-    }
-    validation = _test_runner.validate_fix(repo_path, repo_map, fix_result)
-
-    if not validation.get("overall", False):
-        failures = validation.get("failures", ["Unknown validation error"])
-        failure_detail = "; ".join(failures) if isinstance(failures, list) else str(failures)
-        logger.warning(f"Validation failed for bounty {bounty_id}: {failure_detail}")
-        db.log_processing(bounty_id, "validator", "failed", "validation_failed", failure_detail)
-    else:
-        db.log_processing(bounty_id, "validator", "passed", "processing")
-
-    return {
-        "repo_map": repo_map,
-        "validation": validation,
-        "validation_passed": validation.get("overall", False),
-    }
-
-
-def review_node(state: BountyState) -> dict:
-    bounty = state["bounty"]
-    bounty_id = state["bounty_id"]
     diff_content = state.get("diff_content", "")
 
-    logger.info(f"Node review: bounty {bounty_id}")
-    db.log_processing(bounty_id, "reviewer", "start", "processing")
+    logger.info(f"Node cicd_specialist: bounty {bounty_id}")
+    db.log_processing(bounty_id, "cicd", "start", "processing")
 
-    review_result = _code_reviewer.review(diff_content, bounty)
+    try:
+        result = _cicd_specialist.process(bounty, diff_content, repo_path)
 
-    if review_result.get("model_used"):
-        db.log_processing(bounty_id, "reviewer", f"Model: {review_result['model_used']}", "processing")
-    if review_result.get("token_stats"):
-        stats = review_result["token_stats"]
-        db.log_processing(bounty_id, "reviewer",
-            f"Tokens - Prompt: {stats.get('prompt_tokens', 0)} | Completion: {stats.get('completion_tokens', 0)} | Total: {stats.get('total_tokens', 0)}", "processing")
-    if review_result.get("duration"):
-        db.log_processing(bounty_id, "reviewer", f"Review time: {review_result['duration']:.1f}s", "processing")
+        if result.get("model_used"):
+            db.log_processing(bounty_id, "cicd", f"Model: {result['model_used']}", "processing")
 
-    approved = review_result.get("approved", False)
-    score = review_result.get("score", 0)
+        approved = result.get("review_approved", False)
+        score = result.get("review_score", 0)
+        validation_passed = result.get("validation_passed", False)
 
-    if not approved:
-        logger.warning(f"Code review failed for bounty {bounty_id}: {review_result.get('notes')}")
-        db.log_processing(bounty_id, "reviewer", "rejected", "review_failed")
-    else:
-        logger.info(f"Code review passed for bounty {bounty_id}, score: {score}")
-        db.log_processing(bounty_id, "reviewer", f"approved (score: {score})", "processing")
+        if result.get("fix_cycles", 0) > 0:
+            db.log_processing(bounty_id, "cicd", f"test-fix cycles: {result['fix_cycles']}", "processing")
 
-    return {
-        "review_result": review_result,
-        "review_approved": approved,
-        "review_score": score,
-    }
+        if not validation_passed:
+            failures = result.get("validation", {}).get("failures", [])
+            failure_detail = "; ".join(failures[:3]) if failures else "validation failed"
+            db.log_processing(bounty_id, "cicd", f"validation failed: {failure_detail}", "validation_failed")
+        else:
+            db.log_processing(bounty_id, "cicd", "validation passed", "processing")
+
+        if not approved:
+            notes = result.get("review_result", {}).get("notes", "")
+            logger.warning(f"Code review rejected for bounty {bounty_id}: {notes}")
+            db.log_processing(bounty_id, "cicd", f"review rejected (score: {score})", "review_failed")
+        else:
+            logger.info(f"Code review passed for bounty {bounty_id}, score: {score}")
+            db.log_processing(bounty_id, "cicd", f"review approved (score: {score})", "processing")
+
+        return {
+            "validation_passed": validation_passed,
+            "validation": result.get("validation", {}),
+            "review_approved": approved,
+            "review_score": score,
+            "review_result": result.get("review_result", {}),
+            "fix_cycles": result.get("fix_cycles", 0),
+        }
+
+    except Exception as e:
+        logger.error(f"CI/CD Specialist failed for bounty {bounty_id}: {e}")
+        db.log_processing(bounty_id, "cicd", f"error: {e}", "error")
+        return {
+            "validation_passed": False,
+            "validation": {"overall": False, "failures": [str(e)]},
+            "review_approved": False,
+            "review_score": 0,
+            "review_result": {"approved": False, "issues": [], "score": 0, "notes": f"CI/CD failed: {e}"},
+        }
 
 
 def enqueue_review_node(state: BountyState) -> dict:
@@ -274,7 +272,6 @@ def enqueue_review_node(state: BountyState) -> dict:
     raw_confidence = state.get("confidence", 0.5)
     raw_score = state.get("review_score", 50)
 
-    # Clamp values to prevent >100% scores
     raw_confidence = min(1.0, max(0.0, raw_confidence))
     raw_score = min(100.0, max(0.0, raw_score))
 

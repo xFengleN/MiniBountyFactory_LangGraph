@@ -1,8 +1,7 @@
 import os
 import subprocess
-import tempfile
 import shutil
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 from pathlib import Path
 from pydantic import BaseModel
 
@@ -26,7 +25,7 @@ class FixOutput(BaseModel):
     reasoning: str
 
 
-class SimpleTaskAgent:
+class SimpleCoder:
     def __init__(self):
         self._llm = None
         self._last_model = ''
@@ -36,7 +35,7 @@ class SimpleTaskAgent:
 
     @property
     def model_name(self):
-        return config.agents.get('roles', {}).get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
+        return config.agents.get('roles', {}).get('simple_coder', 'qwen2.5:0.5b')
 
     def _get_llm(self):
         model = self.model_name
@@ -52,7 +51,7 @@ class SimpleTaskAgent:
             ).with_structured_output(FixOutput)
         return self._llm
 
-    def process_bounty(self, bounty: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def process(self, bounty: Dict[str, Any], subtask_description: str = None) -> Optional[Dict[str, Any]]:
         bounty_id = bounty.get('id')
         title = bounty.get('title', '')
         description = bounty.get('description', '')
@@ -63,17 +62,18 @@ class SimpleTaskAgent:
             logger.error(f"No repository URL for bounty {bounty_id}")
             return None
 
-        logger.info(f"Processing bounty {bounty_id}: {title}")
+        tag = f"subtask: {subtask_description[:40]}..." if subtask_description else "full task"
+        logger.info(f"SimpleCoder processing bounty {bounty_id} ({tag})")
 
         try:
             repo_path = self._clone_repository(repo_url, bounty_id)
             if not repo_path:
                 return None
 
-            fix_result = self._generate_fix(repo_path, title, description, issue_url)
+            fix_result = self._generate_fix(repo_path, title, description, issue_url, subtask_description)
 
             if not fix_result or not fix_result.files:
-                logger.warning(f"No fix generated for bounty {bounty_id}")
+                logger.warning(f"No fix generated for bounty {bounty_id} ({tag})")
                 return None
 
             branch_name = f"bounty-fix-{bounty_id}"
@@ -92,14 +92,13 @@ class SimpleTaskAgent:
                 'files_changed': [f.model_dump() for f in fix_result.files],
                 'confidence': fix_result.confidence,
                 'repo_path': repo_path,
-                'agent_type': 'simple',
                 'model_used': self.model_name,
                 'token_stats': {},
                 'duration': 0,
             }
 
         except Exception as e:
-            logger.error(f"Failed to process bounty {bounty_id}: {e}")
+            logger.error(f"SimpleCoder failed for bounty {bounty_id}: {e}")
             return None
 
     def _clone_repository(self, repo_url: str, bounty_id: int) -> Optional[str]:
@@ -151,9 +150,14 @@ class SimpleTaskAgent:
         repo_path: str,
         title: str,
         description: str,
-        issue_url: str
+        issue_url: str,
+        subtask_description: str = None
     ) -> Optional[FixOutput]:
         files_info = self._get_repo_files(repo_path)
+
+        scope = ""
+        if subtask_description:
+            scope = f"\nYou are solving a specific subtask:\nSubtask: {subtask_description}\n"
 
         prompt = f"""You are a code generation assistant. Fix bugs or implement small features based on issue descriptions.
 
@@ -170,7 +174,7 @@ Issue Description:
 {description}
 
 Issue URL: {issue_url}
-
+{scope}
 Repository Files (sample):
 {files_info}
 

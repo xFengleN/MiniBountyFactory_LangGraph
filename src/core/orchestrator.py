@@ -9,14 +9,15 @@ from .task_processor import task_processor
 from .config import config
 from .graph import get_compiled_graph
 from .sandbox import kill_running_containers
-from ..agents.router import AgentRouter
-from ..agents.code_reviewer import CodeReviewAgent
+from ..agents.dispatcher import Dispatcher
+from ..agents.simple_coder import SimpleCoder
+from ..agents.super_coder import SuperCoder
+from ..agents.cicd_specialist import CicdSpecialist
 from ..agents.pr_creator import PRCreator
 from ..agents.github_scout import GitHubScout
 from ..agents.github_checker import GitHubIssueChecker
 from ..agents.comment_generator import CommentGenerator
 from ..agents.repo_mapper import RepoMapper
-from ..agents.test_runner import TestRunner
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -28,11 +29,12 @@ class BountyFactoryOrchestrator:
         self.github_scout = GitHubScout(config.git.get('token'))
         self.github_checker = GitHubIssueChecker(config.git.get('token'))
         self.comment_generator = CommentGenerator()
-        self.router = AgentRouter()
-        self.code_reviewer = CodeReviewAgent()
+        self.dispatcher = Dispatcher()
+        self.simple_coder = SimpleCoder()
+        self.super_coder = SuperCoder()
+        self.cicd_specialist = CicdSpecialist()
         self.pr_creator = PRCreator()
         self.repo_mapper = RepoMapper()
-        self.test_runner = TestRunner()
 
         self.running = False
         self.worker_thread = None
@@ -109,7 +111,7 @@ class BountyFactoryOrchestrator:
 
         try:
             graph = get_compiled_graph()
-            config = {"configurable": {"thread_id": str(bounty_id)}}
+            config_data = {"configurable": {"thread_id": str(bounty_id)}}
 
             initial_state = {
                 "bounty_id": bounty_id,
@@ -117,7 +119,7 @@ class BountyFactoryOrchestrator:
                 "retry_count": 0,
             }
 
-            final_state = graph.invoke(initial_state, config=config)
+            final_state = graph.invoke(initial_state, config=config_data)
 
             status = final_state.get("status", "")
             if status == "queued_for_review":
@@ -174,12 +176,13 @@ class BountyFactoryOrchestrator:
     def get_status(self) -> Dict[str, Any]:
         return {
             'running': self.running,
-            'router_status': self.router.get_status(),
-            'code_reviewer_available': self.code_reviewer.is_available(),
+            'dispatcher_available': self.dispatcher.is_available(),
+            'simple_coder_available': self.simple_coder.is_available(),
+            'super_coder_available': self.super_coder.is_available(),
+            'cicd_specialist_available': self.cicd_specialist.is_available(),
             'pr_creator_configured': self.pr_creator.is_configured(),
             'github_scout_available': self.github_scout.is_available(),
             'repo_mapper_available': True,
-            'test_runner_available': True,
             'pending_reviews': len(db.get_pending_reviews())
         }
 

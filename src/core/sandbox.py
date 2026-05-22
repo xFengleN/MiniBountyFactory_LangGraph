@@ -488,7 +488,7 @@ def run_sandbox_task(
     workspace_base = config.get("workspace.base_path")
     sandbox_dir = Path(workspace_base) / f"bounty_{bounty_id}"
 
-    model = model or config.agents.get('roles', {}).get('simple_agent', "qwen2.5-coder:7b-instruct-q4_K_M")
+    model = model or config.agents.get('roles', {}).get('simple_coder', "qwen2.5:0.5b")
 
     # Step 1: Clone on host
     if sandbox_dir.exists() and (sandbox_dir / ".git").exists():

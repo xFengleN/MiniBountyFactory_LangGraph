@@ -5,13 +5,14 @@ Autonomous bounty hunting system for Algora.io and GitHub issues. Finds open bou
 ## Features
 
 - **Automatic Bounty Discovery** - Fetches open bounties via Algora tRPC API and GitHub issues with bounty labels
-- **LangGraph Orchestration** - State graph with conditional routing, checkpointer, and 7 nodes (precheck, classify, simple/complex agent, validate, review, enqueue)
+- **LangGraph Orchestration** - State graph with conditional routing, checkpointer, and 5 nodes (precheck, dispatcher, coder, cicd_specialist, enqueue)
 - **Podman Sandboxed Execution** - Container-isolated LLM inference (2 CPU, 2GB RAM limits), host handles git/file I/O for speed
 - **Role-Based Agent Model Selection** - Configure different models for each agent role via web UI dropdowns (Ollama + OpenCode GO)
-- **Task Classification** - Uses local LLM to route tasks by complexity (simple vs complex)
-- **Dual Agent System**
-  - **Simple Agent** - Handles single-file fixes, typos, small bugs
-  - **Complex Agent** - Decomposes tasks into subtasks assigned to roles (junior_coder, super_coder), solves via sandboxed LLM or cloud
+- **4 Specialized Agents** - Dispatcher, Simple Coder, Super Coder, CI/CD Specialist
+  - **Dispatcher** - Single LLM call classifies AND optionally decomposes tasks; routes simple tasks directly, breaks complex tasks into subtasks
+  - **Simple Coder** - Handles simple fixes, boilerplate, unit tests, scripts, refactoring (was Simple Agent + Junior Coder)
+  - **Super Coder** - Reserved for complex architecture, multi-file sync, algorithmic bottlenecks (unchanged)
+  - **CI/CD Specialist** - Test-fix loop: runs tests, reads failures, fixes code, re-runs until green, then reviews (was Reviewer + Tester)
 - **Repo Mapping** - Auto-detects framework, package manager, test/lint commands for JS, Python, Go, Rust, C#
 - **Validation** - Runs install, tests, and lint checks before queuing for review
 - **Code Review** - Self-review with local LLM before human approval
@@ -41,38 +42,35 @@ Autonomous bounty hunting system for Algora.io and GitHub issues. Finds open bou
                     │ (LangGraph)  │
                     └──────┬───────┘
                            ▼
-              ┌────────────────────────┐
-              │     Task Classifier    │
-              │   (qwen2.5:0.5b)       │
-              └───────────┬────────────┘
-                          ▼
-            ┌─────────────┴─────────────┐
-            ▼                           ▼
-   ┌────────────────┐        ┌──────────────────┐
-   │  Simple Agent  │        │  Complex Agent   │
-   │ (Podman sandbox│        │ (Podman sandbox  │
-   │  + qwen-coder) │        │  + decomposer)   │
-   └────────┬───────┘        └────────┬─────────┘
-            └────────────┬───────────┘
-                         ▼
-                ┌────────────────┐
-                │  Repo Mapper   │
-                │  Test Runner   │
-                └────────┬───────┘
-                         ▼
-                ┌────────────────┐
-                │ Code Reviewer  │
-                │ (qwen-coder)   │
-                └────────┬───────┘
-                         ▼
-                ┌────────────────┐
-                │  Review Queue  │
-                │  (Human UI)    │
-                └────────┬───────┘
-                         ▼
-                ┌────────────────┐
-                │  PR Creator    │
-                └────────────────┘
+                    ┌──────────────┐
+                    │  Dispatcher  │
+                    │ (classify +  │
+                    │  decompose)  │
+                    └──────┬───────┘
+                           ▼
+                    ┌──────────────┐
+                    │    Coder     │
+                    │ (simple_coder│
+                    │  OR super_   │
+                    │  coder per   │
+                    │  subtask)    │
+                    └──────┬───────┘
+                           ▼
+                    ┌──────────────┐
+                    │CI/CD Specialist
+                    │ (test-fix    │
+                    │  loop +      │
+                    │  review)     │
+                    └──────┬───────┘
+                           ▼
+                    ┌──────────────┐
+                    │ Review Queue │
+                    │ (Human UI)   │
+                    └──────┬───────┘
+                           ▼
+                    ┌──────────────┐
+                    │  PR Creator  │
+                    └──────────────┘
 
 Sandbox Architecture:
 ┌─────────────────────────────────────────┐
@@ -112,9 +110,8 @@ pip install -r requirements.txt
 ### 2. Configure Ollama
 
 ```bash
-ollama pull qwen2.5:0.5b                         # Task classifier (lightweight)
-ollama pull qwen2.5-coder:7b-instruct-q4_K_M     # Agent & reviewer (faster on Mac)
-ollama pull qwen2.5-coder:3b-instruct-q4_K_M     # Junior coder / tester (optional)
+ollama pull qwen2.5:0.5b                         # Dispatcher (lightweight)
+ollama pull qwen2.5-coder:7b-instruct-q4_K_M     # Simple coder / super coder / CI/CD
 ```
 
 ### 3. Configure Settings
@@ -127,13 +124,10 @@ ollama:
 
 agents:
   roles:
-    classifier: "qwen2.5:0.5b"
-    simple_agent: "qwen2.5-coder:7b-instruct-q4_K_M"
-    complex_agent: "qwen2.5-coder:7b-instruct-q4_K_M"
-    junior_coder: "qwen2.5-coder:3b-instruct-q4_K_M"
+    dispatcher: "qwen2.5:0.5b"
+    simple_coder: "qwen2.5-coder:7b-instruct-q4_K_M"
     super_coder: "qwen2.5-coder:7b-instruct-q4_K_M"
-    code_reviewer: "qwen2.5-coder:7b-instruct-q4_K_M"
-    tester: "qwen2.5-coder:3b-instruct-q4_K_M"
+    cicd_specialist: "qwen2.5-coder:7b-instruct-q4_K_M"
 
 opencode:
   api_key: "YOUR_OPENCODE_API_KEY"   # Required for cloud models
@@ -149,13 +143,10 @@ workspace:
 ```
 
 **Agent Roles:**
-- **classifier** - Determines if a task is simple or complex
-- **simple_agent** - Handles straightforward single-file fixes
-- **complex_agent** - Decomposes complex tasks into subtasks
-- **junior_coder** - Solves simple subtasks locally (assigned by decomposer)
-- **super_coder** - Solves complex subtasks via cloud (assigned by decomposer)
-- **code_reviewer** - Reviews generated code quality
-- **tester** - Validates test execution (future use)
+- **dispatcher** - Single LLM call classifies task AND optionally decomposes into subtasks
+- **simple_coder** - Handles simple fixes, boilerplate, scripts, refactoring (was Simple Agent + Junior Coder)
+- **super_coder** - Reserved for complex architecture, multi-file sync, algorithmic bottlenecks
+- **cicd_specialist** - Test-fix loop + code review in one agent (was Reviewer + Tester)
 
 Models can be selected from dropdowns in the web UI Settings, populated from your local Ollama instance and OpenCode GO API.
 
@@ -206,22 +197,21 @@ python main.py --daemon
 ## How It Works
 
 1. **Scan** - Fetch bounties from Algora tRPC API or GitHub issues with bounty labels
-2. **Classify** - Task classifier (Ollama) determines simple vs complex
-3. **Pre-check** - Validates issue availability, checks assignments, reads CONTRIBUTING.md
-4. **Process** - Agent runs inside Podman sandbox: clones repo on host, calls Ollama or OpenCode GO, host applies fix
-5. **Validate** - Repo mapper detects framework/commands, test runner runs install/tests/lint
-6. **Review** - Code review agent validates quality
-7. **Queue** - Fix added to human review queue with diff, comment, and workspace path
-8. **Human Review** - You review in the web UI with GitHub-style diff viewer, inspect workspace, approve/reject
-9. **Submit** - On approval, branch is pushed and PR is created on GitHub
+2. **Pre-check** - Validates issue availability, checks assignments, reads CONTRIBUTING.md
+3. **Dispatch** - Dispatcher (Ollama) classifies simple vs complex; if complex, decomposes into subtasks
+4. **Code** - Simple Coder handles simple tasks; Super Coder handles complex subtasks; all inside Podman sandbox
+5. **CI/CD** - Test-fix loop: runs install/tests/lint, fixes failures, re-runs until green; then runs code review
+6. **Queue** - Fix added to human review queue with diff, comment, and workspace path
+7. **Human Review** - You review in the web UI with GitHub-style diff viewer, inspect workspace, approve/reject
+8. **Submit** - On approval, branch is pushed and PR is created on GitHub
 
-### Complex Task Decomposition
+### Dispatching & Task Decomposition
 
-Complex tasks are decomposed into subtasks assigned to roles:
-- **junior_coder** - Simple, routine changes (runs locally via Ollama)
-- **super_coder** - Complex, architectural changes (runs via OpenCode GO cloud)
+The Dispatcher handles both simple and complex tasks in a single LLM call. If the task is complex, it emits a decomposition plan with subtasks assigned to roles:
+- **simple_coder** - Simple, routine changes
+- **super_coder** - Complex, architectural changes
 
-Processing logs show role distribution: `Decomposed into 9 subtasks: 6 junior_coder, 3 super_coder`
+Processing logs show subtask distribution: `Dispatch: mode=decompose, classification=complex, subtasks: 6 simple_coder, 3 super_coder`
 
 ## Graceful Shutdown
 
@@ -268,8 +258,8 @@ Repositories are cloned to `../bounty_workspaces/bounty_<id>/` relative to the p
 
 ## Memory Usage
 
-- `qwen2.5:0.5b`: ~500MB (classifier)
-- `qwen2.5-coder:7b-instruct-q4_K_M`: ~4GB (agent + reviewer)
+- `qwen2.5:0.5b`: ~500MB (dispatcher)
+- `qwen2.5-coder:7b-instruct-q4_K_M`: ~4GB (coder + CI/CD)
 - Total with both running: ~5GB
 
 ## Project Structure
@@ -283,18 +273,16 @@ bounty_factory/
 │   └── run_task.py              # Container entry point (LLM-only inference)
 ├── src/
 │   ├── agents/                  # Agent modules
-│   │   ├── task_classifier.py   # Task complexity classifier (uses agents.roles.classifier)
-│   │   ├── simple_agent.py      # Local LLM agent (uses agents.roles.simple_agent)
-│   │   ├── complex_agent.py     # Agent with task decomposition (uses agents.roles.*)
-│   │   ├── code_reviewer.py     # Code review agent (uses agents.roles.code_reviewer)
-│   │   ├── task_decomposer.py   # Complex task decomposition (assigns junior_coder/super_coder roles)
-│   │   ├── router.py            # Agent routing logic
-│   │   ├── pr_creator.py        # PR creation
-│   │   ├── github_scout.py      # GitHub issue discovery
-│   │   ├── github_checker.py    # Pre-check (assignments, claims)
-│   │   ├── comment_generator.py # Suggested GitHub comments
-│   │   ├── repo_mapper.py       # Framework/command detection
-│   │   └── test_runner.py       # Validation (install/test/lint)
+│   │   ├── dispatcher.py         # Task classification + decomposition (uses agents.roles.dispatcher)
+│   │   ├── simple_coder.py       # Simple coding agent (uses agents.roles.simple_coder)
+│   │   ├── super_coder.py        # Complex coding agent (uses agents.roles.super_coder)
+│   │   ├── cicd_specialist.py    # Test-fix loop + code review (uses agents.roles.cicd_specialist)
+│   │   ├── pr_creator.py         # PR creation
+│   │   ├── github_scout.py       # GitHub issue discovery
+│   │   ├── github_checker.py     # Pre-check (assignments, claims)
+│   │   ├── comment_generator.py  # Suggested GitHub comments
+│   │   ├── repo_mapper.py        # Framework/command detection
+│   │   └── test_runner.py        # Validation (install/test/lint)
 │   ├── core/                    # Core modules
 │   │   ├── orchestrator.py      # LangGraph workflow orchestrator
 │   │   ├── graph.py             # StateGraph definition + compilation
