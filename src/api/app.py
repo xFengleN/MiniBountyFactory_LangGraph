@@ -397,7 +397,10 @@ def serve_web_ui():
                     <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl mx-auto sm:mx-4 max-h-[90vh] flex flex-col">
                         <div class="flex justify-between items-center mb-4">
                             <h3 id="taskLogsTitle" class="text-base sm:text-lg font-bold"><i class="fas fa-terminal mr-2"></i>Task Logs</h3>
-                            <button onclick="closeTaskLogsModal()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
+                            <div class="flex items-center gap-2">
+                                <button onclick="clearTaskLogs()" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm"><i class="fas fa-trash mr-1"></i> Clear</button>
+                                <button onclick="closeTaskLogsModal()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
+                            </div>
                         </div>
                         <div id="taskLogStats" class="hidden mb-3"></div>
                         <div id="taskLogsContent" class="bg-gray-900 rounded p-4 flex-1 overflow-y-auto font-mono text-sm space-y-1 min-h-[400px] max-h-[70vh]">
@@ -854,6 +857,11 @@ def serve_web_ui():
                     .catch(e => {
                         document.getElementById('taskLogsContent').innerHTML = '<div class="text-red-400">Failed to load logs: ' + e.message + '</div>';
                     });
+            }
+
+            function clearTaskLogs() {
+                document.getElementById('taskLogsContent').innerHTML = '<div class="text-gray-400">Logs cleared</div>';
+                document.getElementById('taskLogStats').classList.add('hidden');
             }
 
             function closeTaskLogsModal() {
