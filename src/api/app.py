@@ -1409,9 +1409,9 @@ def serve_web_ui():
                                 ${r.review_notes ? `<button onclick="showReviewComment(${r.id})" class="text-sm text-purple-400 hover:text-purple-300 bg-gray-700 px-3 py-1.5 rounded"><i class="fas fa-comment mr-1"></i> View Comment</button>` : ''}
                                 ${workspacePath ? `<button onclick="openWorkspace('${workspacePath}')" class="text-sm text-blue-400 hover:text-blue-300 bg-gray-700 px-3 py-1.5 rounded"><i class="fas fa-folder-open mr-1"></i> Show in Finder</button>` : ''}
                                 <button onclick="viewTaskLogs(${taskId})" class="text-sm text-gray-400 hover:text-gray-300 bg-gray-700 px-3 py-1.5 rounded"><i class="fas fa-terminal mr-1"></i> Logs</button>
-                                <button onclick="approveReview(${r.id})" title="Approve fix and create GitHub PR from the local branch" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-sm">Approve & PR</button>
-                                <button onclick="rejectReview(${r.id})" title="Reject fix and post failure comment on the issue" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm">Reject</button>
-                                <button onclick="skipReview(${r.id})" title="Defer review, leave for another reviewer" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm">Skip</button>
+                                <button onclick="approveReview(${r.id})" title="Approve fix, create GitHub PR from branch, then delete local workspace" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-sm">Approve & PR</button>
+                                <button onclick="rejectReview(${r.id})" title="Reject fix, post failure comment on issue, then delete local workspace" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm">Reject</button>
+                                <button onclick="skipReview(${r.id})" title="Skip review, leave for another reviewer, then delete local workspace" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm">Skip</button>
                                 ${issueUrl ? `<a href="${issueUrl}" target="_blank" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm"><i class="fas fa-external-link mr-1"></i>Issue</a>` : ''}
                             </div>
                         `;
