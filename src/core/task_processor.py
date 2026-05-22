@@ -43,7 +43,7 @@ class TaskProcessor:
         self._worker_thread.start()
         logger.info("Task processor started")
 
-    def stop(self, timeout: int = 60):
+    def stop(self, timeout: int = 3):
         logger.info("Stopping task processor...")
         self._running = False
         self._shutdown_event.set()

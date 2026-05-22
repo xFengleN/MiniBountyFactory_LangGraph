@@ -135,7 +135,6 @@ def run_web_ui(port: int = 5000):
         sys.stdout.flush()
         if orchestrator:
             orchestrator.stop()
-            time.sleep(0.5)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown_handler)

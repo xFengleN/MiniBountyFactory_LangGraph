@@ -56,7 +56,7 @@ class BountyFactoryOrchestrator:
         logger.info("Stopping Bounty Factory Orchestrator")
         self.running = False
 
-        task_processor.stop(timeout=60)
+        task_processor.stop(timeout=3)
 
         killed = kill_running_containers()
         if killed > 0:
@@ -67,7 +67,7 @@ class BountyFactoryOrchestrator:
             logger.info(f"Reset {reset} interrupted bounties back to 'new'")
 
         if self.worker_thread and self.worker_thread.is_alive():
-            self.worker_thread.join(timeout=10)
+            self.worker_thread.join(timeout=3)
             if self.worker_thread.is_alive():
                 logger.warning("Worker thread did not finish within timeout")
 
