@@ -39,7 +39,9 @@ def serve_web_ui():
         .tab-active { border-bottom: 2px solid #a855f7; color: #a855f7; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .stat-card { background: #111827; border-radius: 0.5rem; padding: 0.5rem; text-align: center; transition: box-shadow 0.3s; }
+        .stat-card { background: #111827; border-radius: 0.5rem; padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; transition: box-shadow 0.3s; }
+        .stat-card .label { color: #9ca3af; font-size: 0.75rem; white-space: nowrap; }
+        .stat-card .value { font-size: 0.875rem; font-weight: 700; font-family: 'Courier New', monospace; white-space: nowrap; }
         .pulse .stat-card { animation: pulse-border 0.6s ease-out; }
         @keyframes pulse-border { 0% { box-shadow: 0 0 0 0 rgba(168,85,247,0.4); } 50% { box-shadow: 0 0 0 4px rgba(168,85,247,0.2); } 100% { box-shadow: 0 0 0 0 rgba(168,85,247,0); } }
         .phase-dots { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px; }
@@ -731,29 +733,29 @@ def serve_web_ui():
                 const mTps = maxTps(models);
                 const modelEntries = Object.entries(models).slice(0, 3);
 
-                let html = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3' + (pulseClass ? ' pulse' : '') + '">';
+                let html = '<div class="space-y-2 mb-3' + (pulseClass ? ' pulse' : '') + '">';
 
-                html += '<div class="stat-card"><div class="text-gray-500 text-xs">Duration</div><div class="text-sm font-bold ' + colorForDuration(dur) + '" id="sban-dur">0.0s</div></div>';
-                html += '<div class="stat-card"><div class="text-gray-500 text-xs">Total Tokens</div><div class="text-sm font-bold text-green-400" id="sban-tok">0</div><div class="tstat-muted text-[10px]" id="sban-tok-sub">P: 0 · C: 0</div></div>';
+                html += '<div class="stat-card"><span class="label">Duration</span><span class="value ' + colorForDuration(dur) + '" id="sban-dur">0.0s</span></div>';
+                html += '<div class="stat-card"><span class="label">Total Tokens</span><span class="value text-green-400" id="sban-tok">0</span><span class="tstat-muted text-[10px]" id="sban-tok-sub">P: 0 · C: 0</span></div>';
 
                 for (let i = 0; i < modelEntries.length; i++) {
                     const [name, m] = modelEntries[i];
                     const tps = m.tokens_per_sec || 0;
                     const barPct = mTps > 0 ? Math.round((tps / mTps) * 100) : 0;
-                    html += '<div class="stat-card"><div class="tstat-muted text-[10px] truncate" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>';
-                    html += '<div class="text-xs ' + colorForTps(tps) + '" id="sban-tps-' + i + '">0 tok/s</div>';
-                    html += '<div class="mini-bar"><div class="mini-bar-fill" id="sban-bar-' + i + '" style="width:' + barPct + '%"></div></div>';
-                    html += '<div class="tstat-muted text-[10px]" id="sban-mtok-' + i + '">0 tok</div></div>';
+                    html += '<div class="stat-card"><span class="label truncate" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
+                    html += '<div class="flex items-center gap-2 flex-1 max-w-[50%]"><div class="mini-bar flex-1"><div class="mini-bar-fill" id="sban-bar-' + i + '" style="width:' + barPct + '%"></div></div>';
+                    html += '<span class="text-xs ' + colorForTps(tps) + '" id="sban-tps-' + i + '">0 tok/s</span></div>';
+                    html += '<span class="tstat-muted text-[10px]" id="sban-mtok-' + i + '">0 tok</span></div>';
                 }
 
-                html += '<div class="stat-card"><div class="text-gray-500 text-xs">Phase</div><div class="phase-dots">';
+                html += '<div class="stat-card"><span class="label">Phase</span><div class="flex items-center gap-2"><div class="phase-dots">';
                 for (let p = 0; p < PHASE_ORDER.length; p++) {
                     let cls = 'waiting';
                     if (p < phaseIdx) cls = 'done';
                     else if (p === phaseIdx) cls = 'active';
                     html += '<span class="phase-dot ' + cls + '" title="' + PHASE_LABELS[PHASE_ORDER[p]] + '"></span>';
                 }
-                html += '</div><div class="tstat-muted text-[10px]" id="sban-phase">' + (phaseIdx >= 0 ? PHASE_LABELS[PHASE_ORDER[phaseIdx]] || step : '—') + '</div></div>';
+                html += '</div><span class="tstat-muted text-[10px]" id="sban-phase">' + (phaseIdx >= 0 ? PHASE_LABELS[PHASE_ORDER[phaseIdx]] || step : '—') + '</span></div></div>';
 
                 html += '</div>';
                 container.innerHTML = html;
