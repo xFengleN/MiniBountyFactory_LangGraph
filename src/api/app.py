@@ -327,6 +327,26 @@ def serve_web_ui():
                     </div>
                 </div>
 
+                <div id="confirmModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-[100]">
+                    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-sm mx-4">
+                        <p id="confirmModalMessage" class="text-sm sm:text-base mb-6"></p>
+                        <div class="flex justify-end gap-3">
+                            <button id="confirmModalCancel" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm min-h-[44px]">Cancel</button>
+                            <button id="confirmModalOk" class="bg-red-700 hover:bg-red-600 px-4 py-2 rounded text-sm font-medium min-h-[44px]">OK</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="promptModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-[100]">
+                    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-sm mx-4">
+                        <p id="promptModalMessage" class="text-sm sm:text-base mb-4"></p>
+                        <input id="promptModalInput" type="text" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm min-h-[44px] mb-4">
+                        <div class="flex justify-end gap-3">
+                            <button id="promptModalCancel" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm min-h-[44px]">Cancel</button>
+                            <button id="promptModalOk" class="bg-blue-700 hover:bg-blue-600 px-4 py-2 rounded text-sm font-medium min-h-[44px]">OK</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="precheckModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
                     <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
                         <div class="flex justify-between items-center mb-4">
@@ -1137,6 +1157,49 @@ def serve_web_ui():
 
             function refreshAll() { refreshStatus(); loadTasks(); loadReviews(); }
 
+            function customConfirm(message) {
+                return new Promise((resolve) => {
+                    const modal = document.getElementById('confirmModal');
+                    const msgEl = document.getElementById('confirmModalMessage');
+                    const okBtn = document.getElementById('confirmModalOk');
+                    const cancelBtn = document.getElementById('confirmModalCancel');
+                    msgEl.textContent = message;
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    const cleanup = () => {
+                        modal.classList.add('hidden');
+                        modal.classList.remove('flex');
+                        okBtn.onclick = null;
+                        cancelBtn.onclick = null;
+                    };
+                    okBtn.onclick = () => { cleanup(); resolve(true); };
+                    cancelBtn.onclick = () => { cleanup(); resolve(false); };
+                });
+            }
+
+            function customPrompt(message) {
+                return new Promise((resolve) => {
+                    const modal = document.getElementById('promptModal');
+                    const msgEl = document.getElementById('promptModalMessage');
+                    const inputEl = document.getElementById('promptModalInput');
+                    const okBtn = document.getElementById('promptModalOk');
+                    const cancelBtn = document.getElementById('promptModalCancel');
+                    msgEl.textContent = message;
+                    inputEl.value = '';
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    inputEl.focus();
+                    const cleanup = () => {
+                        modal.classList.add('hidden');
+                        modal.classList.remove('flex');
+                        okBtn.onclick = null;
+                        cancelBtn.onclick = null;
+                    };
+                    okBtn.onclick = () => { cleanup(); resolve(inputEl.value); };
+                    cancelBtn.onclick = () => { cleanup(); resolve(null); };
+                });
+            }
+
             async function toggleSystem() {
                 const statusRes = await fetch('/api/status');
                 const status = await statusRes.json();
@@ -1654,7 +1717,7 @@ def serve_web_ui():
             }
 
             async function retryRejected(reviewId, taskId) {
-                if (!confirm('Retry this task? It will be reset and processed again.')) return;
+                if (!await customConfirm('Retry this task? It will be reset and processed again.')) return;
                 try {
                     await fetch('/api/reviews/' + reviewId + '/retry', { method: 'POST' });
                     loadRejectedReviews();
@@ -1663,7 +1726,7 @@ def serve_web_ui():
             }
 
             async function deleteRejected(reviewId, taskId) {
-                if (!confirm('Delete this task permanently?')) return;
+                if (!await customConfirm('Delete this task permanently?')) return;
                 try {
                     await fetch('/api/tasks/' + taskId + '/delete', { method: 'DELETE' });
                     // Also clean up the review queue entry
@@ -1676,7 +1739,7 @@ def serve_web_ui():
             async function retryAllRejected() {
                 const container = document.getElementById('rejectedList');
                 const items = container.querySelectorAll('[data-review-id]');
-                if (!confirm('Retry all rejected tasks?')) return;
+                if (!await customConfirm('Retry all rejected tasks?')) return;
                 try {
                     const res = await fetch('/api/reviews?status=rejected');
                     const reviews = await res.json();
@@ -1689,7 +1752,7 @@ def serve_web_ui():
             }
 
             async function deleteAllRejected() {
-                if (!confirm('Delete all rejected tasks permanently?')) return;
+                if (!await customConfirm('Delete all rejected tasks permanently?')) return;
                 try {
                     const res = await fetch('/api/reviews?status=rejected');
                     const reviews = await res.json();
@@ -2025,7 +2088,7 @@ def serve_web_ui():
                 if (!_precheckTaskId) return;
                 const body = document.getElementById('precheckComment').value;
                 if (!body.trim()) return;
-                if (!confirm('Post this comment on GitHub?')) return;
+                if (!await customConfirm('Post this comment on GitHub?')) return;
                 const btn = document.getElementById('sendCommentBtn');
                 const original = btn.innerHTML;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending...';
@@ -2194,15 +2257,15 @@ def serve_web_ui():
             }
 
             async function approveReview(id) {
-                if (!confirm('Approve and create PR?')) return;
+                if (!await customConfirm('Approve and create PR?')) return;
                 const res = await fetch('/api/reviews/' + id + '/approve', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}) });
                 const data = await res.json();
                 alert(data.pr_url ? 'PR Created: ' + data.pr_url : 'Approved!');
                 loadReviews(); refreshStatus();
             }
-            async function rejectReview(id) { const c = prompt('Reason:'); if (c === null) return; await fetch('/api/reviews/' + id + '/reject', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({comments: c}) }); loadReviews(); }
+            async function rejectReview(id) { const c = await customPrompt('Reason for rejection:'); if (c === null || !c.trim()) return; await fetch('/api/reviews/' + id + '/reject', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({comments: c}) }); loadReviews(); }
             async function trashReview(reviewId, taskId) {
-                if (!confirm('Delete this task permanently?')) return;
+                if (!await customConfirm('Delete this task permanently?')) return;
                 try {
                     await fetch('/api/tasks/' + taskId + '/delete', { method: 'DELETE' });
                     await fetch('/api/reviews/' + reviewId + '/delete', { method: 'DELETE' });
@@ -2228,7 +2291,7 @@ def serve_web_ui():
             async function deleteSelected() {
                 const ids = Array.from(document.querySelectorAll('.task-checkbox:checked')).map(cb => parseInt(cb.dataset.id));
                 if (ids.length === 0) return;
-                if (!confirm(`Delete ${ids.length} task(s)?`)) return;
+                if (!await customConfirm(`Delete ${ids.length} task(s)?`)) return;
                 const res = await fetch('/api/tasks/delete', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -2240,7 +2303,7 @@ def serve_web_ui():
             }
 
             async function retryTask(id) {
-                if (!confirm('Retry this task? It will be reset and processed again immediately.')) return;
+                if (!await customConfirm('Retry this task? It will be reset and processed again immediately.')) return;
                 try {
                     const res = await fetch('/api/tasks/' + id + '/retry', { method: 'POST' });
                     const data = await res.json();
@@ -2256,7 +2319,7 @@ def serve_web_ui():
             }
 
             async function deleteTaskWorkspace(id) {
-                if (!confirm('Delete local files for this task? This cannot be undone.')) return;
+                if (!await customConfirm('Delete local files for this task? This cannot be undone.')) return;
                 try {
                     const res = await fetch('/api/tasks/' + id + '/workspace', { method: 'DELETE' });
                     const data = await res.json();
@@ -2272,7 +2335,7 @@ def serve_web_ui():
             }
 
             async function deleteFailedTask(id) {
-                if (!confirm('Delete this failed task and all its files? This cannot be undone.')) return;
+                if (!await customConfirm('Delete this failed task and all its files? This cannot be undone.')) return;
                 try {
                     const res = await fetch('/api/tasks/' + id + '/delete', { method: 'DELETE' });
                     const data = await res.json();
@@ -2288,7 +2351,7 @@ def serve_web_ui():
             }
 
             async function clearAllUntouched() {
-                if (!confirm('Delete all untouched (new/pending) tasks and their workspace files? This cannot be undone.')) return;
+                if (!await customConfirm('Delete all untouched (new/pending) tasks and their workspace files? This cannot be undone.')) return;
                 const res = await fetch('/api/tasks/clear-untouched', { method: 'POST' });
                 const data = await res.json();
                 alert(`Cleared ${data.deleted} task(s)`);
@@ -2306,7 +2369,7 @@ def serve_web_ui():
                     alert('No failed tasks to retry');
                     return;
                 }
-                if (!confirm(`Retry ${failedIds.length} failed task(s)?`)) return;
+                if (!await customConfirm(`Retry ${failedIds.length} failed task(s)?`)) return;
                 let successCount = 0;
                 for (const id of failedIds) {
                     try {
@@ -2332,7 +2395,7 @@ def serve_web_ui():
                     alert('No failed tasks to delete');
                     return;
                 }
-                if (!confirm(`Delete ${failedIds.length} failed task(s) and all their files? This cannot be undone.`)) return;
+                if (!await customConfirm(`Delete ${failedIds.length} failed task(s) and all their files? This cannot be undone.`)) return;
                 let successCount = 0;
                 for (const id of failedIds) {
                     try {
@@ -2348,7 +2411,7 @@ def serve_web_ui():
             }
 
             async function killTask(taskId) {
-                if (!confirm('Kill this task immediately? Model resources will be released.')) return;
+                if (!await customConfirm('Kill this task immediately? Model resources will be released.')) return;
                 try {
                     await fetch('/api/tasks/' + taskId + '/kill', { method: 'POST' });
                     refreshAll();
@@ -2356,7 +2419,7 @@ def serve_web_ui():
             }
 
             async function resetTask(taskId) {
-                if (!confirm('Reset this task back to "new" status?')) return;
+                if (!await customConfirm('Reset this task back to "new" status?')) return;
                 try {
                     const res = await fetch('/api/tasks/' + taskId + '/reset', { method: 'POST' });
                     const data = await res.json();
@@ -2373,7 +2436,7 @@ def serve_web_ui():
                     alert('No processing tasks to reset');
                     return;
                 }
-                if (!confirm(`Reset ${processing.length} stuck task(s) back to "new"?`)) return;
+                if (!await customConfirm(`Reset ${processing.length} stuck task(s) back to "new"?`)) return;
                 let count = 0;
                 for (const t of processing) {
                     try {
