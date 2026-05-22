@@ -24,6 +24,14 @@ class Config:
                 Path(__file__).parent.parent.parent / 'config' / 'config.yaml'
             )
 
+        config_path = Path(config_path)
+        if not config_path.exists():
+            example = config_path.with_name('config.example.yaml')
+            if example.exists():
+                import shutil
+                shutil.copy2(str(example), str(config_path))
+                print(f"Created {config_path} from {example.name} — edit it with your settings")
+
         with open(config_path, 'r') as f:
             self._config = yaml.safe_load(f)
 

@@ -16,13 +16,13 @@ sandbox:
   cpus: '2'
   timeout: 600
 opencode:
-  api_key: YOUR..._KEY
+  api_key: ""                      # YOUR_OPENCODE_API_KEY
   base_url: https://api.opencode.ai
   timeout: 300
 agents:
   roles:
     dispatcher: qwen2.5:0.5b
-    simple_coder: qwen2.5-coder:7b-instruct-q4_K_M
+    simple_coder: qwen2.5-coder:3b
     super_coder: qwen2.5-coder:7b-instruct-q4_K_M
     cicd_specialist: qwen2.5-coder:3b
   simple_task_max_loc: 50
@@ -37,8 +37,8 @@ database:
 workspace:
   base_path: ../bounty_workspaces
 git:
-  username: YOUR_GITHUB_USERNAME
-  token: YOUR...OKEN
+  username: ""                      # YOUR_GITHUB_USERNAME
+  token: ""                         # YOUR_GITHUB_TOKEN
   default_branch: main
 logging:
   level: INFO

@@ -38,6 +38,9 @@ logs/*.log
 # Environment
 .env
 
+# Config (contains API keys — use config.example.yaml as template)
+config/config.yaml
+
 # Sandbox temp files
 sandbox_*.json
 
