@@ -28,18 +28,29 @@ class FixOutput(BaseModel):
 
 class SimpleTaskAgent:
     def __init__(self):
-        agents_config = config.agents
-        roles = agents_config.get('roles', {})
-        self.model_name = roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
-        self.llm = ChatOllama(
-            model=self.model_name,
-            base_url=config.ollama.get('base_url', 'http://localhost:11434'),
-            temperature=0.4,
-            num_predict=4096,
-        ).with_structured_output(FixOutput)
-
+        self._llm = None
+        self._last_model = ''
+        self._last_base_url = ''
         self.git_config = config.git
         self.max_retries = config.get('agents.max_retries', 3)
+
+    @property
+    def model_name(self):
+        return config.agents.get('roles', {}).get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
+
+    def _get_llm(self):
+        model = self.model_name
+        base_url = config.ollama.get('base_url', 'http://localhost:11434')
+        if self._llm is None or model != self._last_model or base_url != self._last_base_url:
+            self._last_model = model
+            self._last_base_url = base_url
+            self._llm = ChatOllama(
+                model=model,
+                base_url=base_url,
+                temperature=0.4,
+                num_predict=4096,
+            ).with_structured_output(FixOutput)
+        return self._llm
 
     def process_bounty(self, bounty: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         bounty_id = bounty.get('id')
@@ -166,7 +177,7 @@ Repository Files (sample):
 Generate the fix for this issue."""
 
         try:
-            fix_result: FixOutput = self.llm.invoke(prompt)
+            fix_result: FixOutput = self._get_llm().invoke(prompt)
             logger.info(f"Fix generated: {len(fix_result.files)} files, confidence: {fix_result.confidence:.2f}")
             return fix_result
 

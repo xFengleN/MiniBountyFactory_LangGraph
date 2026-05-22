@@ -30,32 +30,42 @@ class FixOutput(BaseModel):
 
 class ComplexTaskAgent:
     def __init__(self):
-        opencode_config = config.opencode
-        self.api_key = opencode_config.get('api_key')
-        self.base_url = opencode_config.get('base_url', 'https://api.opencode.ai')
-
-        if self.api_key == 'YOUR_OPENCODE_API_KEY':
-            logger.warning("OpenCode API key not configured - complex tasks may fail")
-
+        self._local_llm = None
+        self._last_local_model = ''
+        self._last_base_url = ''
         self.git_config = config.git
         self.decomposer = TaskDecomposer()
 
-        ollama_config = config.ollama
-        agents_config = config.agents
-        roles = agents_config.get('roles', {})
+    @property
+    def api_key(self):
+        key = config.opencode.get('api_key', '')
+        return None if key == 'YOUR_OPENCODE_API_KEY' else key
 
-        self.role_models = {}
+    @property
+    def opencode_base_url(self):
+        return config.opencode.get('base_url', 'https://api.opencode.ai')
+
+    @property
+    def role_models(self):
+        roles = config.agents.get('roles', {})
+        models = {}
         for role_name in ['junior_coder', 'super_coder', 'code_reviewer', 'tester']:
-            model = roles.get(role_name, roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M'))
-            self.role_models[role_name] = model
+            models[role_name] = roles.get(role_name, roles.get('simple_agent', 'qwen2.5-coder:7b-instruct-q4_K_M'))
+        return models
 
-        self.local_model_name = self.role_models.get('junior_coder', 'qwen2.5-coder:3b-instruct-q4_K_M')
-        self.local_llm = ChatOllama(
-            model=self.local_model_name,
-            base_url=ollama_config.get('base_url', 'http://localhost:11434'),
-            temperature=0.4,
-            num_predict=2048,
-        ).with_structured_output(FixOutput)
+    def _get_local_llm(self):
+        model = self.role_models.get('junior_coder', 'qwen2.5-coder:3b-instruct-q4_K_M')
+        base_url = config.ollama.get('base_url', 'http://localhost:11434')
+        if self._local_llm is None or model != self._last_local_model or base_url != self._last_base_url:
+            self._last_local_model = model
+            self._last_base_url = base_url
+            self._local_llm = ChatOllama(
+                model=model,
+                base_url=base_url,
+                temperature=0.4,
+                num_predict=2048,
+            ).with_structured_output(FixOutput)
+        return self._local_llm
 
     def process_bounty(self, bounty: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         bounty_id = bounty.get('id')
@@ -95,9 +105,15 @@ class ComplexTaskAgent:
                 logger.info(f"Subtask {subtask_id}: {subtask_role} - {subtask_desc[:50]}...")
 
                 if subtask_role == 'super_coder':
-                    fix_result = self._solve_subtask_with_cloud(
-                        repo_path, subtask_desc, bounty, subtask_id
-                    )
+                    if not self.api_key:
+                        logger.warning("OpenCode not configured, falling back to local for super_coder subtask")
+                        fix_result = self._solve_subtask_locally(
+                            repo_path, subtask_desc, bounty, subtask_id
+                        )
+                    else:
+                        fix_result = self._solve_subtask_with_cloud(
+                            repo_path, subtask_desc, bounty, subtask_id
+                        )
                 else:
                     fix_result = self._solve_subtask_locally(
                         repo_path, subtask_desc, bounty, subtask_id
@@ -154,7 +170,7 @@ Description: {bounty.get('description', '')[:500]}
 Solve this subtask."""
 
         try:
-            fix_result: FixOutput = self.local_llm.invoke(prompt)
+            fix_result: FixOutput = self._get_local_llm().invoke(prompt)
             return {
                 'files': [f.model_dump() for f in fix_result.files],
                 'confidence': fix_result.confidence,
@@ -185,7 +201,7 @@ Solve this subtask with expert-level code. Return JSON:
 
         try:
             response = requests.post(
-                f"{self.base_url}/chat",
+                f"{self.opencode_base_url}/chat",
                 headers={
                     'Authorization': f'Bearer {self.api_key}',
                     'Content-Type': 'application/json'
@@ -305,7 +321,7 @@ Solve this subtask with expert-level code. Return JSON:
         issue_url: str,
         bounty_id: int
     ) -> Optional[Dict[str, Any]]:
-        if not self.api_key or self.api_key == 'YOUR_OPENCODE_API_KEY':
+        if not self.api_key:
             logger.error("OpenCode API key not configured")
             return None
 
@@ -338,7 +354,7 @@ REASONING: Brief explanation of what was changed and why"""
 
         try:
             response = requests.post(
-                f"{self.base_url}/chat",
+                f"{self.opencode_base_url}/chat",
                 headers={
                     'Authorization': f'Bearer {self.api_key}',
                     'Content-Type': 'application/json'
@@ -523,12 +539,12 @@ REASONING: Brief explanation of what was changed and why"""
             return ""
 
     def is_available(self) -> bool:
-        if not self.api_key or self.api_key == 'YOUR_OPENCODE_API_KEY':
+        if not self.api_key:
             return False
 
         try:
             response = requests.get(
-                f"{self.base_url}/models",
+                f"{self.opencode_base_url}/models",
                 headers={'Authorization': f'Bearer {self.api_key}'},
                 timeout=10
             )

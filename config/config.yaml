@@ -22,8 +22,8 @@ opencode:
 agents:
   roles:
     classifier: qwen2.5:0.5b
-    simple_agent: llama3.2:3b
-    complex_agent: qwen3.5:9b
+    simple_agent: qwen2.5:0.5b
+    complex_agent: qwen2.5:0.5b
     junior_coder: qwen2.5-coder:7b-instruct-q4_K_M
     super_coder: qwen2.5-coder:7b-instruct-q4_K_M
     code_reviewer: qwen2.5-coder:7b-instruct-q4_K_M

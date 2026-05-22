@@ -26,15 +26,27 @@ class TaskDecomposer:
     ROLES = ['junior_coder', 'super_coder']
 
     def __init__(self):
-        agents_config = config.agents
-        roles = agents_config.get('roles', {})
-        self.model_name = roles.get('complex_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
-        self.llm = ChatOllama(
-            model=self.model_name,
-            base_url=config.ollama.get('base_url', 'http://localhost:11434'),
-            temperature=0.3,
-            num_predict=1024,
-        ).with_structured_output(DecompositionOutput)
+        self._llm = None
+        self._last_model = ''
+        self._last_base_url = ''
+
+    @property
+    def model_name(self):
+        return config.agents.get('roles', {}).get('complex_agent', 'qwen2.5-coder:7b-instruct-q4_K_M')
+
+    def _get_llm(self):
+        model = self.model_name
+        base_url = config.ollama.get('base_url', 'http://localhost:11434')
+        if self._llm is None or model != self._last_model or base_url != self._last_base_url:
+            self._last_model = model
+            self._last_base_url = base_url
+            self._llm = ChatOllama(
+                model=model,
+                base_url=base_url,
+                temperature=0.3,
+                num_predict=1024,
+            ).with_structured_output(DecompositionOutput)
+        return self._llm
 
     def decompose(self, bounty: Dict[str, Any]) -> List[Dict[str, Any]]:
         title = bounty.get('title', '')
@@ -54,7 +66,7 @@ Description: {description}
 Break it into subtasks and assign each to 'junior_coder' or 'super_coder'."""
 
         try:
-            result: DecompositionOutput = self.llm.invoke(prompt)
+            result: DecompositionOutput = self._get_llm().invoke(prompt)
 
             role_counts = {}
             for s in result.subtasks:

@@ -31,15 +31,12 @@ logger = get_logger(__name__)
 def setup_ollama():
     print("Setting up Ollama models...")
 
-    ollama_config = config.ollama
-    client = OllamaClient(base_url=ollama_config.get('base_url', 'http://localhost:11434'))
+    client = OllamaClient(base_url=config.ollama.get('base_url', 'http://localhost:11434'))
 
-    models = ollama_config.get('models', {})
-    model_list = [
-        models.get('classifier', 'qwen2.5:0.5b'),
-        models.get('simple_agent', 'llama3.2:3b'),
-        models.get('code_reviewer', 'llama3.2:3b')
-    ]
+    roles = config.agents.get('roles', {})
+    model_list = list(set(v for v in roles.values() if v))
+    if not model_list:
+        model_list = ['qwen2.5:0.5b', 'qwen2.5-coder:7b-instruct-q4_K_M']
 
     unique_models = list(set(model_list))
 

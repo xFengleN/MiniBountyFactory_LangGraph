@@ -19,18 +19,29 @@ class ClassificationOutput(BaseModel):
 
 class TaskClassifier:
     def __init__(self):
-        agents_config = config.agents
-        roles = agents_config.get('roles', {})
-        self.model_name = roles.get('classifier', 'qwen2.5:0.5b')
-        self.llm = ChatOllama(
-            model=self.model_name,
-            base_url=config.ollama.get('base_url', 'http://localhost:11434'),
-            temperature=0.3,
-            num_predict=512,
-        ).with_structured_output(ClassificationOutput)
-
+        self._llm = None
+        self._last_model = ''
+        self._last_base_url = ''
         self.simple_max_loc = config.get('agents.simple_task_max_loc', 50)
         self.simple_max_files = config.get('agents.simple_task_max_files', 3)
+
+    @property
+    def model_name(self):
+        return config.agents.get('roles', {}).get('classifier', 'qwen2.5:0.5b')
+
+    def _get_llm(self):
+        model = self.model_name
+        base_url = config.ollama.get('base_url', 'http://localhost:11434')
+        if self._llm is None or model != self._last_model or base_url != self._last_base_url:
+            self._last_model = model
+            self._last_base_url = base_url
+            self._llm = ChatOllama(
+                model=model,
+                base_url=base_url,
+                temperature=0.3,
+                num_predict=512,
+            ).with_structured_output(ClassificationOutput)
+        return self._llm
 
     def classify(self, bounty: Dict[str, Any]) -> Tuple[str, float]:
         title = bounty.get('title', '')
@@ -56,7 +67,7 @@ Price: ${price}
 Classify this task."""
 
         try:
-            result: ClassificationOutput = self.llm.invoke(prompt)
+            result: ClassificationOutput = self._get_llm().invoke(prompt)
 
             logger.info(f"Classification result: {result.classification} ({result.confidence:.2f} confidence)")
 
