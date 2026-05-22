@@ -96,8 +96,19 @@ def coder_node(state: BountyState) -> dict:
     bounty_id = state["bounty_id"]
     classification = state.get("classification", "simple")
     subtasks = state.get("subtasks", [])
+    last_errors = state.get("last_validation_errors", [])
 
-    logger.info(f"Node coder: bounty {bounty_id}, classification={classification}")
+    retry_count = state.get("retry_count", 0) + 1
+
+    logger.info(f"Node coder: bounty {bounty_id}, classification={classification}, retry={retry_count}")
+
+    if last_errors:
+        bounty = dict(bounty)
+        context = "\n".join(f"- {e}" for e in last_errors[:10])
+        bounty["description"] = (bounty.get("description", "") +
+            f"\n\n[Previous attempt failed with these validation errors:\n{context}\n"
+            "The workspace already has some changes applied. Fix the underlying issues, "
+            "not just the test failures.]")
 
     if classification == "simple" or not subtasks:
         db.log_processing(bounty_id, "coder", "simple mode", "processing")
@@ -134,6 +145,7 @@ def coder_node(state: BountyState) -> dict:
             "token_stats": result.get("token_stats", {}),
             "duration": result.get("duration", 0),
             "validation": result.get("validation", {}),
+            "retry_count": retry_count,
         }
 
     db.log_processing(bounty_id, "coder", f"complex mode: {len(subtasks)} subtasks", "processing")
@@ -202,6 +214,7 @@ def coder_node(state: BountyState) -> dict:
         "token_stats": {},
         "duration": 0,
         "subtasks_completed": len(subtasks),
+        "retry_count": retry_count,
     }
 
 
@@ -249,6 +262,9 @@ def cicd_specialist_node(state: BountyState) -> dict:
             "review_score": score,
             "review_result": result.get("review_result", {}),
             "fix_cycles": result.get("fix_cycles", 0),
+            "last_validation_errors": result.get("last_validation_errors", []),
+            "diff_content": result.get("diff_content", state.get("diff_content", "")),
+            "commit_sha": result.get("commit_sha", state.get("commit_sha", "")),
         }
 
     except Exception as e:
@@ -260,6 +276,7 @@ def cicd_specialist_node(state: BountyState) -> dict:
             "review_approved": False,
             "review_score": 0,
             "review_result": {"approved": False, "issues": [], "score": 0, "notes": f"CI/CD failed: {e}"},
+            "last_validation_errors": [str(e)],
         }
 
 

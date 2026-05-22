@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional, List, Tuple
+import os, subprocess
 from pydantic import BaseModel
 
 from langchain_ollama import ChatOllama
@@ -10,7 +11,7 @@ from .repo_mapper import RepoMapper
 
 logger = get_logger(__name__)
 
-MAX_FIX_CYCLES = 4
+MAX_FIX_CYCLES = 3
 
 
 class ReviewIssue(BaseModel):
@@ -120,6 +121,8 @@ class CicdSpecialist:
                 logger.warning(f"Fix generation failed on cycle {cycle}")
                 break
 
+            self._commit_fixes(repo_path, bounty_id, cycle)
+
             validation = self.test_runner.validate_fix(repo_path, repo_map, fix_output)
             result['validation'] = validation
             result['validation_passed'] = validation.get('overall', False)
@@ -127,16 +130,21 @@ class CicdSpecialist:
         result['fix_cycles'] = cycle
 
         try:
-            import subprocess
             diff_result = subprocess.run(
                 ['git', 'diff', 'HEAD~1', 'HEAD'],
-                cwd=repo_path,
-                capture_output=True,
-                text=True
+                cwd=repo_path, capture_output=True, text=True
             )
             result['diff_content'] = diff_result.stdout
+
+            sha_result = subprocess.run(
+                ['git', 'rev-parse', 'HEAD'],
+                cwd=repo_path, capture_output=True, text=True
+            )
+            result['commit_sha'] = sha_result.stdout.strip()
         except Exception:
             pass
+
+        result['last_validation_errors'] = result.get('validation', {}).get('failures', [])
 
         review = self._run_review(result.get('diff_content', diff_content), bounty)
         result.update(review)
@@ -219,6 +227,16 @@ Perform a thorough review."""
                 },
             }
 
+    def _commit_fixes(self, repo_path: str, bounty_id: int, cycle: int):
+        try:
+            subprocess.run(['git', 'add', '.'], cwd=repo_path, capture_output=True)
+            subprocess.run(
+                ['git', 'commit', '-m', f'cicd: fix cycle {cycle} for bounty #{bounty_id}'],
+                cwd=repo_path, capture_output=True, text=True
+            )
+        except Exception as e:
+            logger.warning(f"Commit after fix cycle {cycle} failed: {e}")
+
     def _generate_test_fix(
         self,
         repo_path: str,
@@ -252,8 +270,7 @@ Make only the changes needed to fix the failures."""
             response = self._get_fix_llm().invoke(prompt)
             content = response.content if hasattr(response, 'content') else str(response)
 
-            import json
-            import re
+            import json, re
 
             json_match = re.search(r'\[\s*\{.*\}\s*\]', content, re.DOTALL)
             if json_match:
@@ -275,7 +292,6 @@ Make only the changes needed to fix the failures."""
                     logger.warning(f"Skipping hallucinated path: {raw_path}")
                     continue
                 file_path = os.path.join(repo_path, rel_path)
-                import os
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
                 with open(file_path, 'w') as f:

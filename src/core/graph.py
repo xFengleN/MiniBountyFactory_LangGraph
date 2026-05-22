@@ -13,6 +13,9 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+MAX_CODER_RETRIES = 2
+
+
 def route_after_dispatcher(state: BountyState) -> str:
     if state.get("error"):
         return "failed"
@@ -28,8 +31,16 @@ def route_after_coder(state: BountyState) -> str:
 def route_after_cicd(state: BountyState) -> str:
     if state.get("error"):
         return "failed"
+    retry_count = state.get("retry_count", 0)
+
     if state.get("review_approved", False):
         return "enqueue_review"
+
+    validation_passed = state.get("validation_passed", False)
+    if not validation_passed and retry_count < MAX_CODER_RETRIES:
+        logger.info(f"Routing back to coder (retry {retry_count + 1}/{MAX_CODER_RETRIES})")
+        return "coder"
+
     return "failed"
 
 
@@ -53,6 +64,7 @@ def build_graph() -> StateGraph:
         "failed": END,
     })
     graph.add_conditional_edges("cicd_specialist", route_after_cicd, {
+        "coder": "coder",
         "enqueue_review": "enqueue_review",
         "failed": END,
     })
