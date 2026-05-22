@@ -29,6 +29,8 @@ agents:
   simple_task_max_files: 3
   max_retries: 3
   retry_delay: 60
+  max_local_fix_cycles: 3
+  max_send_back: 2
 database:
   path: data/bounty_factory.db
 workspace:

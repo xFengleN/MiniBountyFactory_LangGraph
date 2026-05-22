@@ -8,12 +8,10 @@ from .nodes import (
     cicd_specialist_node,
     enqueue_review_node,
 )
+from .config import config
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-MAX_CODER_PASSES = 3
 
 
 def route_after_dispatcher(state: BountyState) -> str:
@@ -32,13 +30,14 @@ def route_after_cicd(state: BountyState) -> str:
     if state.get("error"):
         return "failed"
     pass_count = state.get("retry_count", 0)
+    max_send_back = config.get('agents.max_send_back', 2)
 
     if state.get("review_approved", False):
         return "enqueue_review"
 
     validation_passed = state.get("validation_passed", False)
-    if not validation_passed and pass_count < MAX_CODER_PASSES:
-        logger.info(f"Routing back to coder (pass {pass_count}/{MAX_CODER_PASSES})")
+    if not validation_passed and pass_count <= max_send_back:
+        logger.info(f"Routing back to coder (pass {pass_count}/{max_send_back + 1})")
         return "coder"
 
     return "failed"

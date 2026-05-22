@@ -420,6 +420,18 @@ def serve_web_ui():
                                     </div>
                                 </div>
                                 <p class="text-xs text-gray-500 mt-2">Models are loaded from Ollama and OpenCode. Select a model for each agent role.</p>
+                                <div class="grid grid-cols-2 gap-3 mt-3">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Local Fix Cycles</label>
+                                        <input type="number" id="cfgMaxLocalCycles" min="1" max="10" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                        <p class="text-xs text-gray-500 mt-0.5">CI/CD test-fix attempts before sending back to coder</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Coder Send-backs</label>
+                                        <input type="number" id="cfgMaxSendBack" min="0" max="10" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono">
+                                        <p class="text-xs text-gray-500 mt-0.5">Max times CI/CD sends back to coder for regeneration</p>
+                                    </div>
+                                </div>
                             </div>
 
                             <div>
@@ -934,6 +946,9 @@ def serve_web_ui():
                     document.getElementById('cfgRoleSuper').value = roles.super_coder || '';
                     document.getElementById('cfgRoleCicd').value = roles.cicd_specialist || '';
 
+                    document.getElementById('cfgMaxLocalCycles').value = cfg.agents?.max_local_fix_cycles ?? 3;
+                    document.getElementById('cfgMaxSendBack').value = cfg.agents?.max_send_back ?? 2;
+
                     document.getElementById('cfgGitUsername').value = cfg.git?.username || '';
                     document.getElementById('cfgGitToken').value = cfg.git?.token || '';
                     document.getElementById('cfgWorkspacePath').value = cfg.workspace?.base_path || '';
@@ -965,6 +980,8 @@ def serve_web_ui():
                             super_coder: document.getElementById('cfgRoleSuper').value,
                             cicd_specialist: document.getElementById('cfgRoleCicd').value,
                         },
+                        max_local_fix_cycles: parseInt(document.getElementById('cfgMaxLocalCycles').value) || 3,
+                        max_send_back: parseInt(document.getElementById('cfgMaxSendBack').value) || 2,
                     },
                 };
 
@@ -2435,6 +2452,10 @@ def update_config():
                 for k, v in a['roles'].items():
                     if v:
                         cfg['agents']['roles'][k] = v
+            if 'max_local_fix_cycles' in a:
+                cfg['agents']['max_local_fix_cycles'] = int(a['max_local_fix_cycles'])
+            if 'max_send_back' in a:
+                cfg['agents']['max_send_back'] = int(a['max_send_back'])
 
         if 'sandbox' in data:
             s = data['sandbox']

@@ -11,8 +11,6 @@ from .repo_mapper import RepoMapper
 
 logger = get_logger(__name__)
 
-MAX_FIX_CYCLES = 3
-
 
 class ReviewIssue(BaseModel):
     severity: str
@@ -115,9 +113,10 @@ class CicdSpecialist:
             pass
 
         cycle = 0
-        while not validation.get('overall', False) and cycle < MAX_FIX_CYCLES:
+        max_cycles = config.get('agents.max_local_fix_cycles', 3)
+        while not validation.get('overall', False) and cycle < max_cycles:
             cycle += 1
-            logger.info(f"CI/CD fix cycle {cycle}/{MAX_FIX_CYCLES} for bounty {bounty_id}")
+            logger.info(f"CI/CD fix cycle {cycle}/{max_cycles} for bounty {bounty_id}")
 
             failures = validation.get('failures', [])
             if not failures:
