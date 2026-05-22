@@ -250,6 +250,27 @@ class GitHubIssueChecker:
             logger.error(f'PR checks error for {owner}/{repo}#{pr_number}: {e}')
         return False
 
+    def post_comment(self, issue_url: str, body: str) -> bool:
+        owner, repo, number = self._parse_issue_url(issue_url)
+        if not owner or not repo or not number:
+            logger.error(f'Cannot post comment: invalid issue URL {issue_url}')
+            return False
+        try:
+            resp = requests.post(
+                f'{self.base_url}/repos/{owner}/{repo}/issues/{number}/comments',
+                headers=self.headers,
+                json={'body': body},
+                timeout=15
+            )
+            if resp.status_code in (200, 201):
+                logger.info(f'Comment posted to {issue_url}')
+                return True
+            logger.error(f'Failed to post comment: {resp.status_code} {resp.text[:200]}')
+            return False
+        except Exception as e:
+            logger.error(f'Post comment error: {e}')
+            return False
+
     def _fetch_contributing(self, owner: str, repo: str) -> Optional[str]:
         for path in ['CONTRIBUTING.md', 'contributing.md', '.github/CONTRIBUTING.md']:
             try:

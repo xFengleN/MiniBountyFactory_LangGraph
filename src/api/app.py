@@ -346,9 +346,14 @@ def serve_web_ui():
                         <div class="mb-4">
                             <label class="block text-sm text-gray-400 mb-1"><i class="fas fa-comment mr-1"></i>Suggested Comment (copy & paste on GitHub)</label>
                             <textarea id="precheckComment" readonly class="w-full h-32 bg-gray-900 text-gray-300 text-sm font-mono p-3 rounded resize-none"></textarea>
-                            <button id="copyCommentBtn" onclick="copyComment()" class="mt-2 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-sm">
-                                <i class="fas fa-copy mr-1"></i> Copy to Clipboard
-                            </button>
+                            <div class="mt-2 flex gap-2">
+                                <button id="copyCommentBtn" onclick="copyComment()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-sm">
+                                    <i class="fas fa-copy mr-1"></i> Copy to Clipboard
+                                </button>
+                                <button id="sendCommentBtn" onclick="sendComment()" class="bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded text-sm">
+                                    <i class="fas fa-paper-plane mr-1"></i> Send Comment
+                                </button>
+                            </div>
                         </div>
 
                         <div class="flex justify-end gap-3">
@@ -1775,6 +1780,7 @@ def serve_web_ui():
             }
 
             function showPrecheckModal(taskId, precheck) {
+                _precheckTaskId = taskId;
                 const modal = document.getElementById('precheckModal');
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
@@ -1912,6 +1918,38 @@ def serve_web_ui():
                 const original = btn.innerHTML;
                 btn.innerHTML = '<i class="fas fa-check mr-1"></i> Copied';
                 setTimeout(() => { btn.innerHTML = original; }, 2000);
+            }
+
+            let _precheckTaskId = null;
+
+            async function sendComment() {
+                if (!_precheckTaskId) return;
+                const body = document.getElementById('precheckComment').value;
+                if (!body.trim()) return;
+                if (!confirm('Post this comment on GitHub?')) return;
+                const btn = document.getElementById('sendCommentBtn');
+                const original = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending...';
+                btn.disabled = true;
+                try {
+                    const res = await fetch('/api/tasks/' + _precheckTaskId + '/comment', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({body: body}),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        btn.innerHTML = '<i class="fas fa-check mr-1"></i> Sent!';
+                        setTimeout(() => { hidePrecheckModal(); }, 1500);
+                    } else {
+                        alert('Failed: ' + (data.error || 'Unknown error'));
+                        btn.innerHTML = original;
+                    }
+                } catch (e) {
+                    alert('Network error: ' + e.message);
+                    btn.innerHTML = original;
+                }
+                btn.disabled = false;
             }
 
             function showProcessingModal(taskId) {
@@ -3050,6 +3088,18 @@ def process_task(task_id):
     if not orchestrator:
         return jsonify({'error': 'Orchestrator not initialized'}), 500
     result = orchestrator.process_single_bounty(task_id)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/comment', methods=['POST'])
+def post_task_comment(task_id):
+    if not orchestrator:
+        return jsonify({'error': 'Orchestrator not initialized'}), 500
+    data = request.get_json() or {}
+    body = data.get('body', '')
+    if not body:
+        return jsonify({'success': False, 'error': 'Comment body is empty'}), 400
+    result = orchestrator.post_comment(task_id, body)
     return jsonify(result)
 
 

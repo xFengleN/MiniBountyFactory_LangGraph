@@ -231,6 +231,20 @@ class BountyFactoryOrchestrator:
             'suggested_comment': suggested_comment,
         }
 
+    def post_comment(self, bounty_id: int, body: str) -> Dict[str, Any]:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            return {'success': False, 'error': 'Bounty not found'}
+        issue_url = bounty.get('issue_url', '')
+        if not issue_url:
+            return {'success': False, 'error': 'No issue URL'}
+        ok = self.github_checker.post_comment(issue_url, body)
+        if ok:
+            db.log_processing(bounty_id, 'comment', 'Comment posted to GitHub', 'info')
+            return {'success': True}
+        db.log_processing(bounty_id, 'comment', 'Failed to post comment', 'error')
+        return {'success': False, 'error': 'Failed to post comment to GitHub'}
+
     def process_single_bounty(self, bounty_id: int) -> Dict[str, Any]:
         bounty = db.get_bounty_by_id(bounty_id)
         if not bounty:
