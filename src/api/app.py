@@ -142,23 +142,23 @@ def serve_web_ui():
                 </div>
 
                 <div class="bg-gray-800 rounded-lg mb-4 sm:mb-6">
-                    <div class="flex overflow-x-auto scrollbar-hide border-b border-gray-700">
-                        <button onclick="switchTab('new')" id="tab-new" class="tab-active px-3 sm:px-6 py-3 font-medium whitespace-nowrap text-sm">
+                    <div class="flex overflow-x-auto border-b border-gray-700" style="-webkit-overflow-scrolling: touch;">
+                        <button onclick="switchTab('new')" id="tab-new" class="tab-active px-2 sm:px-4 py-3 font-medium whitespace-nowrap text-xs sm:text-sm">
                             <i class="fas fa-inbox mr-1 sm:mr-2"></i>New <span id="count-new" class="ml-1 text-xs bg-blue-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('processing')" id="tab-processing" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                        <button onclick="switchTab('processing')" id="tab-processing" class="px-2 sm:px-4 py-3 font-medium text-gray-400 whitespace-nowrap text-xs sm:text-sm">
                             <i class="fas fa-spinner mr-1 sm:mr-2"></i>Processing <span id="count-processing" class="ml-1 text-xs bg-yellow-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('failed')" id="tab-failed" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                        <button onclick="switchTab('failed')" id="tab-failed" class="px-2 sm:px-4 py-3 font-medium text-gray-400 whitespace-nowrap text-xs sm:text-sm">
                             <i class="fas fa-exclamation-triangle mr-1 sm:mr-2"></i>Failed <span id="count-failed" class="ml-1 text-xs bg-red-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('reviews')" id="tab-reviews" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                        <button onclick="switchTab('reviews')" id="tab-reviews" class="px-2 sm:px-4 py-3 font-medium text-gray-400 whitespace-nowrap text-xs sm:text-sm">
                             <i class="fas fa-clipboard-check mr-1 sm:mr-2"></i>Pending Reviews <span id="count-reviews" class="ml-1 text-xs bg-green-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('rejected')" id="tab-rejected" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                        <button onclick="switchTab('rejected')" id="tab-rejected" class="px-2 sm:px-4 py-3 font-medium text-gray-400 whitespace-nowrap text-xs sm:text-sm">
                             <i class="fas fa-ban mr-1 sm:mr-2"></i>Rejected <span id="count-rejected" class="ml-1 text-xs bg-red-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
-                        <button onclick="switchTab('logs')" id="tab-logs" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                        <button onclick="switchTab('logs')" id="tab-logs" class="px-2 sm:px-4 py-3 font-medium text-gray-400 whitespace-nowrap text-xs sm:text-sm">
                             <i class="fas fa-terminal mr-1 sm:mr-2"></i>Logs
                         </button>
                     </div>
@@ -313,8 +313,8 @@ def serve_web_ui():
                             <button onclick="loadLogs()" class="bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded text-sm">
                                 <i class="fas fa-sync mr-1"></i> Refresh Logs
                             </button>
-                            <button onclick="document.getElementById('logsContainer').innerHTML = ''" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm">
-                                <i class="fas fa-trash mr-1"></i> Clear View
+                            <button onclick="clearLogs()" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm">
+                                <i class="fas fa-trash mr-1"></i> Clear Logs
                             </button>
                         </div>
                         <div id="logStats" class="hidden mb-4 bg-gray-900 rounded p-4">
@@ -593,7 +593,7 @@ def serve_web_ui():
                     const tabEl = document.getElementById('tab-' + t);
                     const panelEl = document.getElementById('panel-' + t);
                     if (tabEl) {
-                        tabEl.className = t === tab ? 'tab-active px-3 sm:px-6 py-3 font-medium whitespace-nowrap text-sm' : 'px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm';
+                        tabEl.className = t === tab ? 'tab-active px-2 sm:px-4 py-3 font-medium whitespace-nowrap text-xs sm:text-sm' : 'px-2 sm:px-4 py-3 font-medium text-gray-400 whitespace-nowrap text-xs sm:text-sm';
                     }
                     if (panelEl) {
                         panelEl.className = t === tab ? 'p-4' : 'p-4 hidden';
@@ -948,6 +948,11 @@ def serve_web_ui():
                 } catch (e) {
                     container.innerHTML = `<div class="text-red-400">Failed to load logs: ${e.message}</div>`;
                 }
+            }
+
+            function clearLogs() {
+                document.getElementById('logsContainer').innerHTML = '<div class="text-gray-400">Logs cleared</div>';
+                document.getElementById('logStats').classList.add('hidden');
             }
 
             async function refreshStatus() {
