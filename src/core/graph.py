@@ -13,7 +13,7 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-MAX_CODER_RETRIES = 2
+MAX_CODER_PASSES = 3
 
 
 def route_after_dispatcher(state: BountyState) -> str:
@@ -31,14 +31,14 @@ def route_after_coder(state: BountyState) -> str:
 def route_after_cicd(state: BountyState) -> str:
     if state.get("error"):
         return "failed"
-    retry_count = state.get("retry_count", 0)
+    pass_count = state.get("retry_count", 0)
 
     if state.get("review_approved", False):
         return "enqueue_review"
 
     validation_passed = state.get("validation_passed", False)
-    if not validation_passed and retry_count < MAX_CODER_RETRIES:
-        logger.info(f"Routing back to coder (retry {retry_count + 1}/{MAX_CODER_RETRIES})")
+    if not validation_passed and pass_count < MAX_CODER_PASSES:
+        logger.info(f"Routing back to coder (pass {pass_count}/{MAX_CODER_PASSES})")
         return "coder"
 
     return "failed"
