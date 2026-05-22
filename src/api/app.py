@@ -39,7 +39,7 @@ def serve_web_ui():
         .tab-active { border-bottom: 2px solid #a855f7; color: #a855f7; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .stat-card { background: #111827; border-radius: 0.5rem; padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; overflow: hidden; transition: box-shadow 0.3s; }
+        .stat-card { background: #111827; border-radius: 0.5rem; padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; transition: box-shadow 0.3s; }
         .stat-card .label { color: #9ca3af; font-size: 0.75rem; white-space: nowrap; }
         .stat-card .value { font-size: 0.875rem; font-weight: 700; font-family: 'Courier New', monospace; white-space: nowrap; }
         .pulse .stat-card { animation: pulse-border 0.6s ease-out; }
@@ -744,14 +744,16 @@ def serve_web_ui():
                     modelHtml += '<span class="tstat-muted text-[10px] whitespace-nowrap" id="sban-mtok-' + i + '">0 tok</span></div></div>';
                 }
 
-                let html = '<div class="grid grid-cols-2 gap-3 mb-3' + (pulseClass ? ' pulse' : '') + '" style="grid-template-rows: auto 1fr;">';
+                let html = '<div style="overflow-x: auto;" class="mb-3">';
+                html += '<div class="flex gap-3' + (pulseClass ? ' pulse' : '') + '" style="min-width: 100%; width: max-content;">';
+                html += '<div class="flex flex-col gap-2" style="flex: 1 1 45%; min-width: 0;">';
                 html += '<div class="stat-card"><span class="label">Duration</span><span class="value ' + colorForDuration(dur) + '" id="sban-dur">0.0s</span></div>';
-                html += '<div class="stat-card"><span class="label">Total Tokens</span><div class="flex items-center gap-2 min-w-0"><span class="value text-green-400" id="sban-tok">0</span><span class="tstat-muted text-[10px] whitespace-nowrap" id="sban-tok-sub">P: 0 · C: 0</span></div></div>';
                 if (modelHtml) {
-                    html += '<div class="flex flex-col gap-2">' + modelHtml + '</div>';
-                } else {
-                    html += '<div></div>';
+                    html += modelHtml;
                 }
+                html += '</div>';
+                html += '<div class="flex flex-col gap-2" style="flex: 1 1 45%; min-width: 0;">';
+                html += '<div class="stat-card"><span class="label">Total Tokens</span><div class="flex items-center gap-2 min-w-0"><span class="value text-green-400" id="sban-tok">0</span><span class="tstat-muted text-[10px] whitespace-nowrap" id="sban-tok-sub">P: 0 · C: 0</span></div></div>';
                 html += '<div class="stat-card"><span class="label">Phase</span><div class="flex items-center gap-2"><div class="phase-dots">';
                 for (let p = 0; p < PHASE_ORDER.length; p++) {
                     let cls = 'waiting';
@@ -761,6 +763,7 @@ def serve_web_ui():
                 }
                 html += '</div><span class="tstat-muted text-[10px] whitespace-nowrap" id="sban-phase">' + (phaseIdx >= 0 ? PHASE_LABELS[PHASE_ORDER[phaseIdx]] || step : '—') + '</span></div></div>';
                 html += '</div>';
+                html += '</div></div>';
                 container.innerHTML = html;
                 container.classList.remove('hidden');
 
