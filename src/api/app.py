@@ -371,7 +371,7 @@ def serve_web_ui():
                             <h3 id="taskLogsTitle" class="text-base sm:text-lg font-bold"><i class="fas fa-terminal mr-2"></i>Task Logs</h3>
                             <button onclick="closeTaskLogsModal()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
                         </div>
-                        <div id="taskLogStats" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3"></div>
+                        <div id="taskLogStats" class="hidden mb-3"></div>
                         <div id="taskLogsContent" class="bg-gray-900 rounded p-4 flex-1 overflow-y-auto font-mono text-sm space-y-1 min-h-[400px] max-h-[70vh]">
                             <div class="text-gray-400">Loading logs...</div>
                         </div>
