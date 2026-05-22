@@ -640,6 +640,18 @@ def _detect_test_command(sandbox_dir):
     return None
 
 
+def validate_in_container(bounty_id: int, repo_path: str) -> Dict[str, Any]:
+    """Run install + test validation inside a sandbox container for a given repo path."""
+    runtime = _detect_container_runtime()
+    if not runtime:
+        return {"install_ok": False, "tests_ok": False, "overall": False,
+                "failures": ["No container runtime available"]}
+    if not _ensure_image(bounty_id):
+        return {"install_ok": False, "tests_ok": False, "overall": False,
+                "failures": ["Sandbox image not built"]}
+    return _run_validation_in_container(runtime, Path(repo_path), bounty_id)
+
+
 def cleanup_workspace(bounty_id: int) -> bool:
     workspace_base = config.get("workspace.base_path")
     sandbox_dir = Path(workspace_base) / f"bounty_{bounty_id}"

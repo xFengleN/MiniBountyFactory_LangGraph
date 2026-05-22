@@ -10,10 +10,9 @@ from ..agents.comment_generator import CommentGenerator
 from ..agents.simple_coder import SimpleCoder
 from ..agents.super_coder import SuperCoder
 from ..agents.cicd_specialist import CicdSpecialist
-from ..agents.repo_mapper import RepoMapper
 from .config import config
 from .database import db
-from .sandbox import run_sandbox_task
+from .sandbox import run_sandbox_task, validate_in_container
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,7 +23,6 @@ _comment_generator = CommentGenerator()
 _simple_coder = SimpleCoder()
 _super_coder = SuperCoder()
 _cicd_specialist = CicdSpecialist()
-_repo_mapper = RepoMapper()
 
 
 def _run_git(repo_path: str, args: List[str]) -> tuple:
@@ -333,8 +331,7 @@ def cicd_specialist_node(state: BountyState) -> dict:
                 db.log_processing(bounty_id, "cicd", f"gatekeeper: {branch} merge conflict, dropped", "warning")
                 continue
 
-            repo_map = _repo_mapper.map(repo_path)
-            validation = _cicd_specialist.test_runner.validate_fix(repo_path, repo_map, {})
+            validation = validate_in_container(bounty_id, repo_path)
             if not validation.get('overall', False):
                 _run_git(repo_path, ["reset", "--hard", "HEAD~1"])
                 logger.warning(f"Gatekeeper: tests failed after merging {branch}, dropping")

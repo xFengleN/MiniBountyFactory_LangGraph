@@ -5,9 +5,9 @@ from pydantic import BaseModel
 from langchain_ollama import ChatOllama
 
 from ..core.config import config
+from ..core.sandbox import validate_in_container
 from ..utils.logger import get_logger
 from ..utils.ollama_client import extract_token_stats
-from .test_runner import TestRunner
 from .repo_mapper import RepoMapper
 
 logger = get_logger(__name__)
@@ -36,7 +36,6 @@ class CicdSpecialist:
         self._last_base_url = ''
         self.review_token_stats = {}
         self.fix_token_stats = {}
-        self.test_runner = TestRunner()
         self.repo_mapper = RepoMapper()
 
     @property
@@ -98,18 +97,7 @@ class CicdSpecialist:
             result.update(review)
             return result
 
-        repo_map = self.repo_mapper.map(repo_path)
-
-        if not repo_map:
-            logger.warning(f"Repo mapping failed for bounty {bounty_id}, skipping validation")
-            result['validation'] = {'overall': True}
-            result['validation_passed'] = True
-            review = self._run_review(diff_content, bounty)
-            result['token_stats'] = self.review_token_stats
-            result.update(review)
-            return result
-
-        validation = self.test_runner.validate_fix(repo_path, repo_map, {})
+        validation = validate_in_container(bounty_id, repo_path)
         result['validation'] = validation
         result['validation_passed'] = validation.get('overall', False)
 
@@ -130,6 +118,7 @@ class CicdSpecialist:
             if not failures:
                 break
 
+            repo_map = self.repo_mapper.map(repo_path) or {}
             fix_output = self._generate_test_fix(repo_path, repo_map, failures, title, cycle)
             if not fix_output:
                 logger.warning(f"Fix generation failed on cycle {cycle}")
@@ -137,7 +126,7 @@ class CicdSpecialist:
                     subprocess.run(['git', 'reset', '--hard', head_before], cwd=repo_path, capture_output=True)
                 break
 
-            validation = self.test_runner.validate_fix(repo_path, repo_map, fix_output)
+            validation = validate_in_container(bounty_id, repo_path)
             result['validation'] = validation
             result['validation_passed'] = validation.get('overall', False)
 
