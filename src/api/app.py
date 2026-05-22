@@ -249,10 +249,10 @@ def serve_web_ui():
                             <div>
                                 <label class="block text-xs text-gray-500 mb-1">Sort By</label>
                                 <select id="sortByReviews" onchange="loadReviews()" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm">
-                                    <option value="finished_desc">Finished (Newest)</option>
-                                    <option value="finished_asc">Finished (Oldest)</option>
                                     <option value="created_desc">Created (Newest)</option>
                                     <option value="created_asc">Created (Oldest)</option>
+                                    <option value="finished_desc">Finished (Newest)</option>
+                                    <option value="finished_asc">Finished (Oldest)</option>
                                 </select>
                             </div>
                         </div>
@@ -1207,8 +1207,8 @@ def serve_web_ui():
                     // Sort reviews
                     const sortBy = document.getElementById('sortByReviews').value;
                     reviews.sort((a, b) => {
-                        const aFinished = new Date(a.reviewed_at || a.updated_at || 0);
-                        const bFinished = new Date(b.reviewed_at || b.updated_at || 0);
+                        const aFinished = new Date(a.reviewed_at || a.created_at || 0);
+                        const bFinished = new Date(b.reviewed_at || b.created_at || 0);
                         const aCreated = new Date(a.created_at || 0);
                         const bCreated = new Date(b.created_at || 0);
                         
