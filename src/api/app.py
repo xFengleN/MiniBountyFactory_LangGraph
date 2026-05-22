@@ -1338,7 +1338,7 @@ def serve_web_ui():
 
                 function isFailed(t) {
                     const st = normalizeStatus(t.processing_status);
-                    return ['failed', 'validation_failed', 'review_failed', 'error'].includes(st);
+                    return ['failed', 'validation_failed', 'review_failed', 'error', 'cancelled'].includes(st);
                 }
 
                 function taskGroup(t) {
@@ -1460,6 +1460,7 @@ def serve_web_ui():
                             <div class="flex flex-wrap gap-2 sm:gap-2 sm:ml-2 shrink-0 sm:flex-nowrap">
                                 ${isUntouched(t) ? `<button onclick="processTask(${t.id})" class="bg-purple-600 hover:bg-purple-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-play mr-1"></i> Process</button>` : ''}
                                 ${isProcessing(t) ? `<span class="inline-flex items-center gap-2 px-3 py-2 sm:py-1.5 rounded bg-yellow-600/50 text-yellow-300 text-sm font-mono"><i class="fas fa-spinner fa-spin"></i> <span id="elapsed_${t.id}" class="tabular-nums">${elapsed}</span></span>` : ''}
+                                ${isProcessing(t) ? `<button onclick="killTask(${t.id})" class="bg-red-700 hover:bg-red-600 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0 font-medium" title="Kill task immediately and release resources"><i class="fas fa-stop-circle mr-1"></i> Kill</button>` : ''}
                                 ${isProcessing(t) ? `<button onclick="resetTask(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Reset to New"><i class="fas fa-undo"></i></button>` : ''}
                                 ${isFailed(t) ? `<button onclick="retryTask(${t.id})" class="bg-blue-600 hover:bg-blue-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-redo mr-1"></i> Retry</button>` : ''}
                                 ${isFailed(t) ? `<button onclick="deleteFailedTask(${t.id})" class="bg-red-600 hover:bg-red-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Task"><i class="fas fa-trash mr-1"></i> Delete</button>` : ''}
@@ -2346,6 +2347,14 @@ def serve_web_ui():
                 loadTasks();
             }
 
+            async function killTask(taskId) {
+                if (!confirm('Kill this task immediately? Model resources will be released.')) return;
+                try {
+                    await fetch('/api/tasks/' + taskId + '/kill', { method: 'POST' });
+                    refreshAll();
+                } catch (e) { alert('Kill failed: ' + e.message); }
+            }
+
             async function resetTask(taskId) {
                 if (!confirm('Reset this task back to "new" status?')) return;
                 try {
@@ -3142,6 +3151,32 @@ def retry_task(task_id):
     
     result = orchestrator.process_single_bounty(task_id)
     return jsonify({'success': True, 'message': 'Task restarted', 'auto_started': True})
+
+
+@app.route('/api/tasks/<int:task_id>/kill', methods=['POST'])
+def kill_task_api(task_id):
+    from ..core.sandbox import kill_containers_for_bounty, cleanup_workspace
+    bounty = db.get_bounty_by_id(task_id)
+    if not bounty:
+        return jsonify({'error': 'Task not found'}), 404
+
+    was_active = task_processor.cancel(str(task_id))
+    killed = kill_containers_for_bounty(task_id)
+    cleanup_workspace(task_id)
+    db.update_bounty_status(task_id, 'failed')
+    db.log_processing(task_id, 'system', 'killed', 'failed', f'Task killed by user')
+
+    task_id_str = str(task_id)
+    if task_id_str in task_processor._status:
+        task_processor._status[task_id_str]['status'] = 'failed'
+
+    msg = 'Task killed'
+    if was_active:
+        msg += ' (was actively processing)'
+    if killed:
+        msg += f' (killed {killed} container(s))'
+
+    return jsonify({'success': True, 'message': msg})
 
 
 @app.route('/api/tasks/<int:task_id>/reset', methods=['POST'])
