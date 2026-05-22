@@ -1851,6 +1851,7 @@ def serve_web_ui():
                     }
 
                     if (precheck.active_prs && precheck.active_prs.length > 0 && (!precheck.winning_prs || precheck.winning_prs.length === 0)) {
+                        hasIssues = true;
                         precheck.active_prs.forEach(p => {
                             const div = document.createElement('div');
                             div.className = 'text-sm text-yellow-400 flex items-center gap-2';
