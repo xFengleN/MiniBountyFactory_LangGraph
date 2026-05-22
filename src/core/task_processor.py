@@ -248,6 +248,13 @@ class TaskProcessor:
             self._update_progress(task_id, 100, 'Complete - queued for review')
             self._status[task_id]['status'] = 'completed'
             self._log(task_id, 'complete', 'Task processed successfully, awaiting human review')
+        elif result and result.get('skip'):
+            skip_reason = result.get('skip_reason', 'No reason')
+            logger.info(f"Task {task_id} skipped: {skip_reason}")
+            self._update_progress(task_id, 100, f'Skipped - {skip_reason}')
+            self._status[task_id]['status'] = 'skipped'
+            self._status[task_id]['skip_reason'] = skip_reason
+            self._log(task_id, 'skipped', skip_reason)
         else:
             error = result.get('error', 'Unknown error') if result else 'No result'
             self._status[task_id]['status'] = 'error'

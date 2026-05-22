@@ -1832,6 +1832,33 @@ def serve_web_ui():
                         });
                     }
 
+                    if (precheck.algora_status === 'locked') {
+                        hasIssues = true;
+                        const div = document.createElement('div');
+                        div.className = 'text-sm text-red-400 flex items-center gap-2';
+                        div.innerHTML = `<i class="fas fa-lock"></i> Algora exclusive bounty assigned to @${precheck.algora_assignee || 'unknown'}`;
+                        warningsContainer.appendChild(div);
+                    }
+
+                    if (precheck.winning_prs && precheck.winning_prs.length > 0) {
+                        hasIssues = true;
+                        precheck.winning_prs.forEach(p => {
+                            const div = document.createElement('div');
+                            div.className = 'text-sm text-red-400 flex items-center gap-2';
+                            div.innerHTML = `<i class="fas fa-code-branch"></i> PR #${p.number} by @${p.user} already passing CI`;
+                            warningsContainer.appendChild(div);
+                        });
+                    }
+
+                    if (precheck.active_prs && precheck.active_prs.length > 0 && (!precheck.winning_prs || precheck.winning_prs.length === 0)) {
+                        precheck.active_prs.forEach(p => {
+                            const div = document.createElement('div');
+                            div.className = 'text-sm text-yellow-400 flex items-center gap-2';
+                            div.innerHTML = `<i class="fas fa-code-branch"></i> PR #${p.number} by @${p.user} — CI status: ${p.ci_passing ? 'passing' : 'pending/failing'}`;
+                            warningsContainer.appendChild(div);
+                        });
+                    }
+
                     if (precheck.warnings && precheck.warnings.length > 0) {
                         precheck.warnings.forEach(w => {
                             const div = document.createElement('div');

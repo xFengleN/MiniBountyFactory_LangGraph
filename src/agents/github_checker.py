@@ -39,6 +39,9 @@ class GitHubIssueChecker:
             'recent_claims': [],
             'has_contributing': False,
             'contributing_rules': '',
+            'algora_status': None,
+            'algora_assignee': None,
+            'active_prs': [],
             'warnings': [],
         }
 
@@ -62,6 +65,24 @@ class GitHubIssueChecker:
             result['recent_claims'] = recent_claims
             result['warnings'].append(
                 f'Recent claim detected: {recent_claims[0]["user"]} ({recent_claims[0]["time"]})'
+            )
+
+        algora_status = self._check_algora_exclusivity(comments)
+        result['algora_status'] = algora_status['status']
+        result['algora_assignee'] = algora_status['assignee']
+        if algora_status['status'] == 'locked':
+            result['warnings'].append(
+                f'Algora exclusive bounty assigned to @{algora_status["assignee"]}'
+            )
+
+        active_prs = self._check_existing_prs(owner, repo, number)
+        result['active_prs'] = active_prs
+        if active_prs:
+            pr_summary = ', '.join(
+                f'#{p["number"]} ({p["state"]})' for p in active_prs
+            )
+            result['warnings'].append(
+                f'Active PRs found linking to this issue: {pr_summary}'
             )
 
         contributing = self._fetch_contributing(owner, repo)
@@ -116,6 +137,8 @@ class GitHubIssueChecker:
             r'let me try',
             r'working on a fix',
             r'pr incoming',
+            r'/attempt\b',
+            r'/claim\b',
         ]
         pattern = re.compile('|'.join(claim_patterns), re.IGNORECASE)
 
@@ -126,13 +149,106 @@ class GitHubIssueChecker:
             if pattern.search(body):
                 created = datetime.fromisoformat(comment.get('created_at', '').replace('Z', '+00:00')).replace(tzinfo=None)
                 hours_ago = (now - created).total_seconds() / 3600
-                if hours_ago < 48:
-                    claims.append({
-                        'user': comment.get('user', {}).get('login', 'unknown'),
-                        'time': f'{int(hours_ago)}h ago',
-                        'body': body[:100],
-                    })
+                claims.append({
+                    'user': comment.get('user', {}).get('login', 'unknown'),
+                    'time': f'{int(hours_ago)}h ago',
+                    'body': body[:100],
+                })
         return claims
+
+    def _check_algora_exclusivity(self, comments: List[Dict]) -> Dict[str, Any]:
+        exclusive_pattern = re.compile(
+            r'(?:bounty assigned to|exclusive bounty created for|exclusive to)\s+@([\w-]+)',
+            re.IGNORECASE
+        )
+        release_pattern = re.compile(
+            r'(?:bounty unassigned|exclusive cancelled|opened to all)',
+            re.IGNORECASE
+        )
+
+        is_locked = False
+        current_assignee: Optional[str] = None
+
+        for comment in reversed(comments):
+            user = comment.get('user', {}).get('login', '')
+            body = comment.get('body', '')
+
+            if 'algora' not in user.lower():
+                continue
+
+            match = exclusive_pattern.search(body)
+            if match:
+                is_locked = True
+                current_assignee = match.group(1)
+
+            if release_pattern.search(body):
+                is_locked = False
+                current_assignee = None
+
+        if is_locked:
+            return {'status': 'locked', 'assignee': current_assignee}
+        return {'status': 'open', 'assignee': None}
+
+    def _check_existing_prs(self, owner: str, repo: str, issue_number: int) -> List[Dict]:
+        try:
+            resp = requests.get(
+                f'{self.base_url}/repos/{owner}/{repo}/pulls',
+                headers=self.headers,
+                params={
+                    'state': 'open',
+                    'sort': 'updated',
+                    'direction': 'desc',
+                    'per_page': 10,
+                },
+                timeout=15
+            )
+            if resp.status_code != 200:
+                return []
+
+            prs = resp.json()
+            linked = []
+            for pr in prs:
+                body = pr.get('body', '') or ''
+                if f'#{issue_number}' in body:
+                    linked.append({
+                        'number': pr['number'],
+                        'title': pr.get('title', ''),
+                        'state': pr.get('state', ''),
+                        'draft': pr.get('draft', False),
+                        'user': pr.get('user', {}).get('login', ''),
+                        'created_at': pr.get('created_at', ''),
+                        'ci_passing': self._check_pr_checks(owner, repo, pr['number']),
+                    })
+            return linked
+        except Exception as e:
+            logger.error(f'PR check error for {owner}/{repo}#{issue_number}: {e}')
+            return []
+
+    def _check_pr_checks(self, owner: str, repo: str, pr_number: int) -> bool:
+        try:
+            resp = requests.get(
+                f'{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}',
+                headers=self.headers,
+                timeout=10
+            )
+            if resp.status_code != 200:
+                return False
+            pr_data = resp.json()
+            head_sha = pr_data.get('head', {}).get('sha')
+            if not head_sha:
+                return False
+
+            status_resp = requests.get(
+                f'{self.base_url}/repos/{owner}/{repo}/commits/{head_sha}/status',
+                headers=self.headers,
+                timeout=10
+            )
+            if status_resp.status_code == 200:
+                state = status_resp.json().get('state', '')
+                return state == 'success'
+        except Exception as e:
+            logger.error(f'PR checks error for {owner}/{repo}#{pr_number}: {e}')
+        return False
 
     def _fetch_contributing(self, owner: str, repo: str) -> Optional[str]:
         for path in ['CONTRIBUTING.md', 'contributing.md', '.github/CONTRIBUTING.md']:

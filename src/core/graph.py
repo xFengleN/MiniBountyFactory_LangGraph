@@ -14,6 +14,13 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def route_after_precheck(state: BountyState) -> str:
+    if state.get("should_skip"):
+        logger.info(f"Bounty {state.get('bounty_id')} skipped: {state.get('skip_reason')}")
+        return "skipped"
+    return "dispatcher"
+
+
 def route_after_dispatcher(state: BountyState) -> str:
     if state.get("error"):
         return "failed"
@@ -55,7 +62,10 @@ def build_graph() -> StateGraph:
     graph.add_node("enqueue_review", enqueue_review_node)
 
     graph.set_entry_point("precheck")
-    graph.add_edge("precheck", "dispatcher")
+    graph.add_conditional_edges("precheck", route_after_precheck, {
+        "dispatcher": "dispatcher",
+        "skipped": END,
+    })
     graph.add_conditional_edges("dispatcher", route_after_dispatcher, {
         "coder": "coder",
         "failed": END,

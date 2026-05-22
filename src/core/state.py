@@ -7,6 +7,8 @@ class BountyState(TypedDict, total=False):
 
     precheck_result: Optional[Dict[str, Any]]
     suggested_comment: str
+    should_skip: bool
+    skip_reason: str
 
     classification: str
     confidence: float

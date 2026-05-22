@@ -68,6 +68,8 @@ def precheck_node(state: BountyState) -> dict:
 
     check_result = None
     suggested_comment = ""
+    should_skip = False
+    skip_reason = ""
 
     if issue_url:
         check_result = _github_checker.check_issue(issue_url)
@@ -79,11 +81,30 @@ def precheck_node(state: BountyState) -> dict:
                 logger.warning(f"Bounty {bounty_id}: {warning}")
                 db.log_processing(bounty_id, "checker", warning, "warning")
 
+        algora_status = check_result.get("algora_status")
+        if algora_status == "locked":
+            assignee = check_result.get("algora_assignee", "unknown")
+            should_skip = True
+            skip_reason = f"Algora exclusive bounty assigned to @{assignee}"
+            logger.warning(f"Bounty {bounty_id}: {skip_reason}")
+            db.log_processing(bounty_id, "skip", skip_reason, "warning")
+
+        active_prs = check_result.get("active_prs", [])
+        winning_prs = [p for p in active_prs if p.get("ci_passing")]
+        if winning_prs:
+            should_skip = True
+            pr_refs = ", ".join(f"#{p['number']} by @{p['user']}" for p in winning_prs)
+            skip_reason = f"Active PRs passing CI found: {pr_refs}"
+            logger.warning(f"Bounty {bounty_id}: {skip_reason}")
+            db.log_processing(bounty_id, "skip", skip_reason, "warning")
+
     db.log_processing(bounty_id, "precheck", "complete", "processing")
 
     return {
         "precheck_result": check_result,
         "suggested_comment": suggested_comment,
+        "should_skip": should_skip,
+        "skip_reason": skip_reason,
     }
 
 

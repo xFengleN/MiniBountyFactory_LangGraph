@@ -122,6 +122,13 @@ class BountyFactoryOrchestrator:
 
             final_state = graph.invoke(initial_state, config=config_data)
 
+            if final_state.get("should_skip"):
+                reason = final_state.get("skip_reason", "No reason")
+                logger.info(f"Bounty {bounty_id} skipped: {reason}")
+                db.update_bounty_status(bounty_id, 'skipped')
+                db.log_processing(bounty_id, 'orchestrator', f'skipped: {reason}', 'warning')
+                return {'success': False, 'skip': True, 'skip_reason': reason}
+
             status = final_state.get("status", "")
             if status == "queued_for_review":
                 logger.info(f"Bounty {bounty_id} queued for review via graph")
@@ -205,6 +212,10 @@ class BountyFactoryOrchestrator:
         check_result = self.github_checker.check_issue(issue_url)
         suggested_comment = self.comment_generator.generate_intent_comment(bounty, check_result)
 
+        algora_status = check_result.get('algora_status')
+        active_prs = check_result.get('active_prs', [])
+        winning_prs = [p for p in active_prs if p.get('ci_passing')]
+
         return {
             'valid': check_result.get('valid', False),
             'is_assigned': check_result.get('is_assigned', False),
@@ -212,6 +223,10 @@ class BountyFactoryOrchestrator:
             'recent_claims': check_result.get('recent_claims', []),
             'has_contributing': check_result.get('has_contributing', False),
             'contributing_rules': check_result.get('contributing_rules', ''),
+            'algora_status': algora_status,
+            'algora_assignee': check_result.get('algora_assignee'),
+            'active_prs': active_prs,
+            'winning_prs': winning_prs,
             'warnings': check_result.get('warnings', []),
             'suggested_comment': suggested_comment,
         }
