@@ -312,6 +312,14 @@ class Database:
                 """, (limit,))
             return [dict(row) for row in cursor.fetchall()]
 
+    def clear_processing_logs(self, bounty_id: int = None):
+        with self.get_connection() as conn:
+            if bounty_id:
+                conn.cursor().execute("DELETE FROM processing_logs WHERE bounty_id = ?", (bounty_id,))
+            else:
+                conn.cursor().execute("DELETE FROM processing_logs")
+            conn.commit()
+
     def get_running_tasks_count(self) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()

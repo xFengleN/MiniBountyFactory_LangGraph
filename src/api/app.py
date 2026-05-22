@@ -818,7 +818,10 @@ def serve_web_ui():
                 }
             }
 
+            let _currentTaskLogId = null;
+
             function viewTaskLogs(taskId) {
+                _currentTaskLogId = taskId;
                 const modal = document.getElementById('taskLogsModal');
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
@@ -860,8 +863,16 @@ def serve_web_ui():
             }
 
             function clearTaskLogs() {
-                document.getElementById('taskLogsContent').innerHTML = '<div class="text-gray-400">Logs cleared</div>';
-                document.getElementById('taskLogStats').classList.add('hidden');
+                if (!_currentTaskLogId) return;
+                fetch('/api/logs?bounty_id=' + _currentTaskLogId, { method: 'DELETE' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            document.getElementById('taskLogsContent').innerHTML = '<div class="text-gray-400">Logs cleared from database</div>';
+                            document.getElementById('taskLogStats').classList.add('hidden');
+                        }
+                    })
+                    .catch(() => {});
             }
 
             function closeTaskLogsModal() {
@@ -959,8 +970,15 @@ def serve_web_ui():
             }
 
             function clearLogs() {
-                document.getElementById('logsContainer').innerHTML = '<div class="text-gray-400">Logs cleared</div>';
-                document.getElementById('logStats').classList.add('hidden');
+                fetch('/api/logs', { method: 'DELETE' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            document.getElementById('logsContainer').innerHTML = '<div class="text-gray-400">All logs cleared from database</div>';
+                            document.getElementById('logStats').classList.add('hidden');
+                        }
+                    })
+                    .catch(() => {});
             }
 
             async function refreshStatus() {
@@ -2826,6 +2844,20 @@ def get_logs():
         if log.get('created_at') and 'Z' not in str(log['created_at']) and '+' not in str(log['created_at']):
             log['created_at'] = str(log['created_at']) + '+00:00'
     return jsonify(logs)
+
+
+@app.route('/api/logs', methods=['DELETE'])
+def clear_logs():
+    bounty_id = request.args.get('bounty_id', type=int)
+    try:
+        db.clear_processing_logs(bounty_id=bounty_id)
+        if bounty_id:
+            task_id_str = str(bounty_id)
+            if task_id_str in task_processor._logs:
+                del task_processor._logs[task_id_str]
+        return jsonify({'success': True, 'message': 'Logs cleared'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/tasks/<int:task_id>/stats', methods=['GET'])
