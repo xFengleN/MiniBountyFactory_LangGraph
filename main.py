@@ -13,8 +13,6 @@ Usage:
 import argparse
 import os
 import sys
-import signal
-import time
 from pathlib import Path
 
 # Add parent directory to path so 'bounty_factory' module is found
@@ -119,36 +117,9 @@ def show_status():
 
 def run_web_ui(port: int = 5000):
     from bounty_factory.src.api.app import run_server
-    from bounty_factory.src.core.orchestrator import BountyFactoryOrchestrator
-    from bounty_factory.src.core.database import db
-    from bounty_factory.src.core.sandbox import kill_running_containers
-
-    orchestrator = None
-    _shutting_down = False
-
-    def shutdown_handler(sig, frame):
-        nonlocal orchestrator, _shutting_down
-        if _shutting_down:
-            return
-        _shutting_down = True
-        print(f"\nReceived {signal.Signals(sig).name}, shutting down gracefully...")
-        sys.stdout.flush()
-        if orchestrator:
-            orchestrator.stop()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, shutdown_handler)
-    signal.signal(signal.SIGTERM, shutdown_handler)
 
     print(f"Starting Bounty Factory web UI on port {port}...")
-    orchestrator = run_server(port=port, debug=False, return_app=True)
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        if not _shutting_down:
-            shutdown_handler(signal.SIGINT, None)
+    run_server(port=port, debug=False)
 
 
 def main():

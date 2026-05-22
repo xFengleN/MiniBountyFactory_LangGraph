@@ -2884,23 +2884,16 @@ def clear_untouched_tasks():
     return jsonify({'success': True, 'deleted': deleted_count})
 
 
-def run_server(port: int = 5000, debug: bool = False, return_app: bool = False):
+def run_server(port: int = 5000, debug: bool = False):
     global orchestrator, _startup_time
     from ..core.task_processor import task_processor
     _startup_time = time.time()
     orchestrator = BountyFactoryOrchestrator()
     task_processor.start()
-
-    if return_app:
-        import threading
-        flask_thread = threading.Thread(
-            target=lambda: app.run(host='0.0.0.0', port=port, debug=False),
-            daemon=True,
-        )
-        flask_thread.start()
-        return orchestrator
-
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    try:
+        app.run(host='0.0.0.0', port=port, debug=debug)
+    finally:
+        orchestrator.stop()
 
 
 if __name__ == '__main__':
