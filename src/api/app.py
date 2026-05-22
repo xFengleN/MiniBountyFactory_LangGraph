@@ -1440,7 +1440,7 @@ def serve_web_ui():
                                 <button onclick="viewTaskLogs(${taskId})" class="text-sm text-gray-400 hover:text-gray-300 bg-gray-700 px-3 py-1.5 rounded"><i class="fas fa-terminal mr-1"></i> Logs</button>
                                 <button onclick="approveReview(${r.id})" title="Approve fix, create GitHub PR from branch, then delete local workspace" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-sm">Approve & PR</button>
                                 <button onclick="rejectReview(${r.id})" title="Reject fix, post failure comment on issue, then delete local workspace" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm">Reject</button>
-                                <button onclick="skipReview(${r.id})" title="Skip review, leave for another reviewer, then delete local workspace" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm">Skip</button>
+                                <button onclick="trashReview(${r.id}, ${taskId})" title="Delete task and review entry permanently" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm"><i class="fas fa-trash mr-1"></i> Trash</button>
                                 ${issueUrl ? `<a href="${issueUrl}" target="_blank" class="bg-gray-600 hover:bg-gray-700 px-3 py-1.5 rounded text-sm"><i class="fas fa-external-link mr-1"></i>Issue</a>` : ''}
                             </div>
                         `;
@@ -1998,7 +1998,15 @@ def serve_web_ui():
                 loadReviews(); refreshStatus();
             }
             async function rejectReview(id) { const c = prompt('Reason:'); if (c === null) return; await fetch('/api/reviews/' + id + '/reject', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({comments: c}) }); loadReviews(); }
-            async function skipReview(id) { await fetch('/api/reviews/' + id + '/skip', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}) }); loadReviews(); }
+            async function trashReview(reviewId, taskId) {
+                if (!confirm('Delete this task permanently?')) return;
+                try {
+                    await fetch('/api/tasks/' + taskId + '/delete', { method: 'DELETE' });
+                    await fetch('/api/reviews/' + reviewId + '/delete', { method: 'DELETE' });
+                    loadReviews();
+                    refreshAll();
+                } catch (e) { alert('Delete failed: ' + e.message); }
+            }
             async function startSystem() { await fetch('/api/start', {method: 'POST'}); refreshStatus(); }
             async function stopSystem() { await fetch('/api/stop', {method: 'POST'}); refreshStatus(); }
             function toggleSelectAll() {
