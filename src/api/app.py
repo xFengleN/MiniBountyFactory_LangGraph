@@ -345,7 +345,7 @@ def serve_web_ui():
 
                         <div class="mb-4">
                             <label class="block text-sm text-gray-400 mb-1"><i class="fas fa-comment mr-1"></i>Suggested Comment (copy & paste on GitHub)</label>
-                            <textarea id="precheckComment" readonly class="w-full h-32 bg-gray-900 text-gray-300 text-sm font-mono p-3 rounded resize-none"></textarea>
+                            <textarea id="precheckComment" class="w-full h-32 bg-gray-900 text-gray-300 text-sm font-mono p-3 rounded resize-none"></textarea>
                             <div class="mt-2 flex gap-2">
                                 <button id="copyCommentBtn" onclick="copyComment()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-sm">
                                     <i class="fas fa-copy mr-1"></i> Copy to Clipboard
