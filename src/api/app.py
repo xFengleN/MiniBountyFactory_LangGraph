@@ -39,6 +39,22 @@ def serve_web_ui():
         .tab-active { border-bottom: 2px solid #a855f7; color: #a855f7; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .stat-card { background: #111827; border-radius: 0.5rem; padding: 0.5rem; text-align: center; transition: box-shadow 0.3s; }
+        .pulse .stat-card { animation: pulse-border 0.6s ease-out; }
+        @keyframes pulse-border { 0% { box-shadow: 0 0 0 0 rgba(168,85,247,0.4); } 50% { box-shadow: 0 0 0 4px rgba(168,85,247,0.2); } 100% { box-shadow: 0 0 0 0 rgba(168,85,247,0); } }
+        .phase-dots { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px; }
+        .phase-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .phase-dot.waiting { background: #374151; }
+        .phase-dot.active { background: #a855f7; animation: pulse-dot 1s ease-in-out infinite; }
+        .phase-dot.done { background: #22c55e; }
+        .phase-dot.failed { background: #ef4444; }
+        @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .tstat-good { color: #22c55e; }
+        .tstat-warn { color: #eab308; }
+        .tstat-bad { color: #ef4444; }
+        .tstat-muted { color: #9ca3af; }
+        .mini-bar { background: #374151; border-radius: 9999px; height: 4px; margin-top: 3px; overflow: hidden; }
+        .mini-bar-fill { height: 100%; border-radius: 9999px; background: #a855f7; transition: width 0.5s ease; }
     </style>
     </head>
     <body class="bg-gray-900 text-white">
@@ -332,28 +348,7 @@ def serve_web_ui():
                                 <div id="processingProgressBar" class="bg-purple-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
                             </div>
                         </div>
-                        <div id="processingStats" class="hidden mb-3 bg-gray-900 rounded-lg p-3 space-y-1">
-                            <div class="flex justify-between text-xs">
-                                <span class="text-gray-500">Model</span>
-                                <span id="statModel" class="text-purple-300 font-mono"></span>
-                            </div>
-                            <div class="flex justify-between text-xs">
-                                <span class="text-gray-500">Prompt Tokens</span>
-                                <span id="statPrompt" class="text-gray-300 font-mono"></span>
-                            </div>
-                            <div class="flex justify-between text-xs">
-                                <span class="text-gray-500">Completion Tokens</span>
-                                <span id="statCompletion" class="text-gray-300 font-mono"></span>
-                            </div>
-                            <div class="flex justify-between text-xs">
-                                <span class="text-gray-500">Total Tokens</span>
-                                <span id="statTotal" class="text-gray-300 font-mono"></span>
-                            </div>
-                            <div class="flex justify-between text-xs">
-                                <span class="text-gray-500">Duration</span>
-                                <span id="statDuration" class="text-gray-300 font-mono"></span>
-                            </div>
-                        </div>
+                        <div id="processingStats" class="hidden mb-3"></div>
                         <div id="processingLogContent" class="text-sm text-gray-300 font-mono bg-gray-900 p-3 rounded h-48 sm:h-64 overflow-y-auto space-y-1"></div>
                     </div>
                 </div>
@@ -671,6 +666,118 @@ def serve_web_ui():
                 }
             }
 
+            function animateValue(el, target, duration, suffix) {
+                const start = performance.now();
+                const startVal = 0;
+                const endVal = target;
+                const isInt = Number.isInteger(target);
+                function tick(now) {
+                    const p = Math.min((now - start) / duration, 1);
+                    const eased = 1 - Math.pow(1 - p, 3);
+                    const cur = startVal + (endVal - startVal) * eased;
+                    el.textContent = (isInt ? Math.round(cur).toLocaleString() : cur.toFixed(1)) + (suffix || '');
+                    if (p < 1) requestAnimationFrame(tick);
+                }
+                requestAnimationFrame(tick);
+            }
+
+            function escapeHtml(str) {
+                const d = document.createElement('div');
+                d.textContent = str;
+                return d.innerHTML;
+            }
+
+            function colorForDuration(s) {
+                return s < 30 ? 'tstat-good' : s < 120 ? 'tstat-warn' : 'tstat-bad';
+            }
+
+            function colorForTps(tps) {
+                return tps > 15 ? 'tstat-good' : tps > 5 ? 'tstat-warn' : 'tstat-bad';
+            }
+
+            const PHASE_ORDER = ['precheck', 'dispatcher', 'coder', 'cicd', 'review'];
+            const PHASE_LABELS = {precheck:'Pre-check', dispatcher:'Dispatch', coder:'Coder', cicd:'CI/CD', review:'Review'};
+
+            function phaseFromStep(step) {
+                if (!step) return 0;
+                const s = step.toLowerCase();
+                if (s === 'start' || s.includes('precheck')) return 0;
+                if (s.includes('dispatch')) return 1;
+                if (s.includes('coder') || s.includes('model') || s.includes('tokens')) return 2;
+                if (s.includes('cicd') || s.includes('duration') || s.includes('timing')) return 3;
+                if (s.includes('complete') || s.includes('review') || s.includes('queue')) return 4;
+                return 0;
+            }
+
+            function maxTps(models) {
+                let m = 0.1;
+                for (const v of Object.values(models)) { if ((v.tokens_per_sec || 0) > m) m = v.tokens_per_sec; }
+                return m;
+            }
+
+            function renderStatsBanner(containerId, stats, opts) {
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                const animate = opts?.animate !== false;
+                const pulseClass = opts?.pulse || false;
+                const dur = stats.total_duration || 0;
+                const tok = stats.total_tokens || 0;
+                const ptok = stats.total_prompt_tokens || 0;
+                const ctok = stats.total_completion_tokens || 0;
+                const models = stats.models || {};
+                const step = stats.current_step || '';
+                const isComplete = !stats.current_step && stats.total_duration > 0;
+                const phaseIdx = isComplete ? PHASE_ORDER.length - 1 : phaseFromStep(step);
+                const mTps = maxTps(models);
+                const modelEntries = Object.entries(models).slice(0, 3);
+
+                let html = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3' + (pulseClass ? ' pulse' : '') + '">';
+
+                html += '<div class="stat-card"><div class="text-gray-500 text-xs">Duration</div><div class="text-sm font-bold ' + colorForDuration(dur) + '" id="sban-dur">0.0s</div></div>';
+                html += '<div class="stat-card"><div class="text-gray-500 text-xs">Total Tokens</div><div class="text-sm font-bold text-green-400" id="sban-tok">0</div><div class="tstat-muted text-[10px]" id="sban-tok-sub">P: 0 · C: 0</div></div>';
+
+                for (let i = 0; i < modelEntries.length; i++) {
+                    const [name, m] = modelEntries[i];
+                    const tps = m.tokens_per_sec || 0;
+                    const barPct = mTps > 0 ? Math.round((tps / mTps) * 100) : 0;
+                    html += '<div class="stat-card"><div class="tstat-muted text-[10px] truncate" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>';
+                    html += '<div class="text-xs ' + colorForTps(tps) + '" id="sban-tps-' + i + '">0 tok/s</div>';
+                    html += '<div class="mini-bar"><div class="mini-bar-fill" id="sban-bar-' + i + '" style="width:' + barPct + '%"></div></div>';
+                    html += '<div class="tstat-muted text-[10px]" id="sban-mtok-' + i + '">0 tok</div></div>';
+                }
+
+                html += '<div class="stat-card"><div class="text-gray-500 text-xs">Phase</div><div class="phase-dots">';
+                for (let p = 0; p < PHASE_ORDER.length; p++) {
+                    let cls = 'waiting';
+                    if (p < phaseIdx) cls = 'done';
+                    else if (p === phaseIdx) cls = 'active';
+                    html += '<span class="phase-dot ' + cls + '" title="' + PHASE_LABELS[PHASE_ORDER[p]] + '"></span>';
+                }
+                html += '</div><div class="tstat-muted text-[10px]" id="sban-phase">' + (phaseIdx >= 0 ? PHASE_LABELS[PHASE_ORDER[phaseIdx]] || step : '—') + '</div></div>';
+
+                html += '</div>';
+                container.innerHTML = html;
+                container.classList.remove('hidden');
+
+                if (animate) {
+                    animateValue(document.getElementById('sban-dur'), dur, 800, 's');
+                    animateValue(document.getElementById('sban-tok'), tok, 800, '');
+                    document.getElementById('sban-tok-sub').textContent = 'P: ' + ptok.toLocaleString() + ' · C: ' + ctok.toLocaleString();
+                    for (let i = 0; i < modelEntries.length; i++) {
+                        animateValue(document.getElementById('sban-tps-' + i), modelEntries[i][1].tokens_per_sec || 0, 600, ' tok/s');
+                        animateValue(document.getElementById('sban-mtok-' + i), modelEntries[i][1].total_tokens || 0, 600, ' tok');
+                    }
+                } else {
+                    document.getElementById('sban-dur').textContent = dur.toFixed(1) + 's';
+                    document.getElementById('sban-tok').textContent = tok.toLocaleString();
+                    document.getElementById('sban-tok-sub').textContent = 'P: ' + ptok.toLocaleString() + ' · C: ' + ctok.toLocaleString();
+                    for (let i = 0; i < modelEntries.length; i++) {
+                        document.getElementById('sban-tps-' + i).textContent = (modelEntries[i][1].tokens_per_sec || 0).toFixed(1) + ' tok/s';
+                        document.getElementById('sban-mtok-' + i).textContent = (modelEntries[i][1].total_tokens || 0).toLocaleString() + ' tok';
+                    }
+                }
+            }
+
             function viewTaskLogs(taskId) {
                 const modal = document.getElementById('taskLogsModal');
                 modal.classList.remove('hidden');
@@ -687,14 +794,7 @@ def serve_web_ui():
                     .then(r => r.json())
                     .then(stats => {
                         if (stats.total_tokens > 0 || stats.total_duration > 0) {
-                            let html = '';
-                            html += '<div class="bg-gray-900 rounded p-2 text-center"><div class="text-gray-500 text-xs">Duration</div><div class="text-sm font-bold text-purple-400">' + stats.total_duration.toFixed(1) + 's</div></div>';
-                            html += '<div class="bg-gray-900 rounded p-2 text-center"><div class="text-gray-500 text-xs">Total Tokens</div><div class="text-sm font-bold text-green-400">' + stats.total_tokens.toLocaleString() + '</div><div class="text-gray-500 text-[10px]">P: ' + stats.total_prompt_tokens.toLocaleString() + ' | C: ' + stats.total_completion_tokens.toLocaleString() + '</div></div>';
-                            for (const [name, m] of Object.entries(stats.models)) {
-                                html += '<div class="bg-gray-900 rounded p-2 text-center"><div class="text-gray-500 text-xs truncate" title="' + name + '">' + name + '</div><div class="text-xs text-gray-300">' + m.tokens_per_sec + ' tok/s</div><div class="text-xs text-gray-300">' + m.total_tokens.toLocaleString() + ' tok</div></div>';
-                            }
-                            statsDiv.innerHTML = html;
-                            statsDiv.classList.remove('hidden');
+                            renderStatsBanner('taskLogStats', stats, { animate: true });
                         }
                     })
                     .catch(e => console.error('Failed to load stats:', e));
@@ -1709,23 +1809,24 @@ def serve_web_ui():
                             loadTasks();
 
                             if (status.model_used || status.token_stats) {
-                                const statsDiv = document.getElementById('processingStats');
-                                statsDiv.classList.remove('hidden');
+                                const stats = {
+                                    total_duration: status.duration || parseFloat(document.getElementById('processingElapsed').textContent.split(':').reduce((m,s) => m*60+parseFloat(s), 0)) || 0,
+                                    total_tokens: (status.token_stats?.total_tokens) || (status.token_stats?.prompt_tokens || 0) + (status.token_stats?.completion_tokens || 0),
+                                    total_prompt_tokens: status.token_stats?.prompt_tokens || 0,
+                                    total_completion_tokens: status.token_stats?.completion_tokens || 0,
+                                    models: {},
+                                    current_step: status.step || '',
+                                };
                                 if (status.model_used) {
-                                    document.getElementById('statModel').textContent = status.model_used;
+                                    stats.models[status.model_used] = {
+                                        tokens_per_sec: stats.total_duration > 0 ? stats.total_tokens / stats.total_duration : 0,
+                                        total_tokens: stats.total_tokens,
+                                        prompt_tokens: stats.total_prompt_tokens,
+                                        completion_tokens: stats.total_completion_tokens,
+                                        duration: stats.total_duration,
+                                    };
                                 }
-                                if (status.token_stats) {
-                                    const ts = status.token_stats;
-                                    document.getElementById('statPrompt').textContent = ts.prompt_tokens || ts.prompt || '-';
-                                    document.getElementById('statCompletion').textContent = ts.completion_tokens || ts.completion || '-';
-                                    document.getElementById('statTotal').textContent = ts.total_tokens || (ts.prompt_tokens || ts.prompt || 0) + (ts.completion_tokens || ts.completion || 0);
-                                }
-                                if (status.duration) {
-                                    document.getElementById('statDuration').textContent = status.duration.toFixed(1) + 's';
-                                } else {
-                                    const elapsed = document.getElementById('processingElapsed').textContent;
-                                    document.getElementById('statDuration').textContent = elapsed;
-                                }
+                                renderStatsBanner('processingStats', stats, { animate: true, pulse: true });
                             }
 
                             if (status.status === 'error') {
