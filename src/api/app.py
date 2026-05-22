@@ -2717,6 +2717,9 @@ def retry_task(task_id):
     if not bounty:
         return jsonify({'error': 'Task not found'}), 404
 
+    from ..core.sandbox import cleanup_workspace
+    cleanup_workspace(task_id)
+
     db.update_bounty_status(task_id, 'new')
     db.log_processing(task_id, 'system', 'retried', 'new', 'Task reset to new status for retry')
     
@@ -2742,6 +2745,10 @@ def reset_task_api(task_id):
     # Kill any running containers for this bounty
     from ..core.sandbox import kill_containers_for_bounty
     killed = kill_containers_for_bounty(task_id)
+
+    # Discard stale workspace so next run gets a fresh clone
+    from ..core.sandbox import cleanup_workspace
+    cleanup_workspace(task_id)
 
     # Reset DB status
     db.update_bounty_status(task_id, 'new')
