@@ -72,6 +72,12 @@ def dispatcher_node(state: BountyState) -> dict:
     logger.info(f"Dispatch: mode={dispatch_result.mode}, classification={classification}, confidence={dispatch_result.confidence:.2f}")
     db.log_processing(bounty_id, "dispatcher", f"{classification} ({dispatch_result.confidence:.2f})", "processing")
 
+    stats = _dispatcher.last_token_stats
+    if stats.get('total_tokens', 0) > 0:
+        db.log_processing(bounty_id, "dispatcher",
+            f"Prompt: {stats.get('prompt_tokens', '?')} | Completion: {stats.get('completion_tokens', '?')} | Total: {stats.get('total_tokens', '?')}",
+            "processing")
+
     subtasks = [s.model_dump() for s in dispatch_result.subtasks] if dispatch_result.subtasks else []
 
     if subtasks:
@@ -158,26 +164,42 @@ def coder_node(state: BountyState) -> dict:
     branch_name = f"bounty-fix-{bounty_id}"
     commit_sha = None
     final_diff = ""
+    total_prompt = 0
+    total_completion = 0
+    total_duration = 0.0
+    model_used = ""
 
     if simple_subtasks:
-        for subtask in simple_subtasks:
-            subtask_id = subtask.get('id')
-            subtask_desc = subtask.get('description', '')
-            logger.info(f"Coder running simple_coder subtask {subtask_id}")
+            for subtask in simple_subtasks:
+                subtask_id = subtask.get('id')
+                subtask_desc = subtask.get('description', '')
+                logger.info(f"Coder running simple_coder subtask {subtask_id}")
 
-            result = _simple_coder.process(bounty, subtask_description=subtask_desc)
+                result = _simple_coder.process(bounty, subtask_description=subtask_desc)
 
+                if result:
+                    all_files.extend(result.get('files_changed', []))
+                    repo_path = result.get('repo_path', repo_path)
+                    commit_sha = result.get('commit_sha', commit_sha)
+                    ts = result.get('token_stats', {})
+                    total_prompt += ts.get('prompt_tokens', 0)
+                    total_completion += ts.get('completion_tokens', 0)
+                    total_duration += result.get('duration', 0)
+                    if result.get('model_used'):
+                        model_used = result['model_used']
+
+    if super_subtasks:
+            result = _super_coder.process(bounty, super_subtasks)
             if result:
                 all_files.extend(result.get('files_changed', []))
                 repo_path = result.get('repo_path', repo_path)
                 commit_sha = result.get('commit_sha', commit_sha)
-
-    if super_subtasks:
-        result = _super_coder.process(bounty, super_subtasks)
-        if result:
-            all_files.extend(result.get('files_changed', []))
-            repo_path = result.get('repo_path', repo_path)
-            commit_sha = result.get('commit_sha', commit_sha)
+                ts = result.get('token_stats', {})
+                total_prompt += ts.get('prompt_tokens', 0)
+                total_completion += ts.get('completion_tokens', 0)
+                total_duration += result.get('duration', 0)
+                if result.get('model_used'):
+                    model_used = result['model_used']
 
     if not all_files:
         logger.warning(f"No fix generated for complex bounty {bounty_id}")
@@ -210,9 +232,13 @@ def coder_node(state: BountyState) -> dict:
         "commit_sha": commit_sha or "",
         "diff_content": final_diff,
         "files_changed": all_files,
-        "model_used": "",
-        "token_stats": {},
-        "duration": 0,
+        "model_used": model_used,
+        "token_stats": {
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "total_tokens": total_prompt + total_completion,
+        },
+        "duration": total_duration,
         "subtasks_completed": len(subtasks),
         "retry_count": retry_count,
     }
@@ -255,7 +281,9 @@ def cicd_specialist_node(state: BountyState) -> dict:
             logger.info(f"Code review passed for bounty {bounty_id}, score: {score}")
             db.log_processing(bounty_id, "cicd", f"review approved (score: {score})", "processing")
 
-        return {
+        cicd_stats = result.get("token_stats", {})
+
+        ret = {
             "validation_passed": validation_passed,
             "validation": result.get("validation", {}),
             "review_approved": approved,
@@ -266,6 +294,9 @@ def cicd_specialist_node(state: BountyState) -> dict:
             "diff_content": result.get("diff_content", state.get("diff_content", "")),
             "commit_sha": result.get("commit_sha", state.get("commit_sha", "")),
         }
+        if cicd_stats.get("total_tokens", 0) > 0:
+            ret["token_stats"] = cicd_stats
+        return ret
 
     except Exception as e:
         logger.error(f"CI/CD Specialist failed for bounty {bounty_id}: {e}")

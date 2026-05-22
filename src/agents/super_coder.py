@@ -2,6 +2,7 @@ import os
 import subprocess
 import shutil
 import tempfile
+import time
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from pydantic import BaseModel
@@ -11,6 +12,7 @@ from langchain_ollama import ChatOllama
 
 from ..core.config import config
 from ..utils.logger import get_logger
+from ..utils.ollama_client import extract_token_stats
 
 logger = get_logger(__name__)
 
@@ -30,8 +32,11 @@ class FixOutput(BaseModel):
 class SuperCoder:
     def __init__(self):
         self._local_llm = None
+        self._local_structured = None
         self._last_model = ''
         self._last_base_url = ''
+        self.last_token_stats = {}
+        self.last_cloud_usage = {}
         self.git_config = config.git
 
     @property
@@ -47,7 +52,7 @@ class SuperCoder:
     def opencode_base_url(self):
         return config.opencode.get('base_url', 'https://api.opencode.ai')
 
-    def _get_local_llm(self):
+    def _ensure_local_llm(self):
         model = self.model_name
         base_url = config.ollama.get('base_url', 'http://localhost:11434')
         if self._local_llm is None or model != self._last_model or base_url != self._last_base_url:
@@ -58,7 +63,8 @@ class SuperCoder:
                 base_url=base_url,
                 temperature=0.4,
                 num_predict=2048,
-            ).with_structured_output(FixOutput)
+            )
+            self._local_structured = self._local_llm.with_structured_output(FixOutput, include_raw=True)
         return self._local_llm
 
     def process_subtask(self, bounty: Dict[str, Any], subtask_description: str, subtask_id: int) -> Optional[Dict[str, Any]]:
@@ -90,11 +96,14 @@ class SuperCoder:
         logger.info(f"SuperCoder processing {len(subtasks)} subtasks for bounty {bounty_id}")
 
         try:
+            _start = time.time()
             repo_path = self._clone_repository(repo_url, bounty_id)
             if not repo_path:
                 return None
 
             all_files = []
+            total_prompt = 0
+            total_completion = 0
 
             for subtask in subtasks:
                 subtask_id = subtask.get('id')
@@ -104,8 +113,12 @@ class SuperCoder:
 
                 if self.api_key:
                     fix_result = self._solve_subtask_with_cloud(repo_path, subtask_desc, bounty, subtask_id)
+                    total_prompt += self.last_cloud_usage.get('prompt_tokens', 0)
+                    total_completion += self.last_cloud_usage.get('completion_tokens', 0)
                 else:
                     fix_result = self._solve_subtask_locally(repo_path, subtask_desc, bounty, subtask_id)
+                    total_prompt += self.last_token_stats.get('prompt_tokens', 0)
+                    total_completion += self.last_token_stats.get('completion_tokens', 0)
 
                 if fix_result:
                     all_files.extend(fix_result.get('files', []))
@@ -121,6 +134,7 @@ class SuperCoder:
                 return None
 
             diff_content = self._get_diff(repo_path)
+            elapsed = time.time() - _start
 
             return {
                 'bounty_id': bounty_id,
@@ -131,8 +145,12 @@ class SuperCoder:
                 'confidence': 0.7,
                 'repo_path': repo_path,
                 'model_used': self.model_name,
-                'token_stats': {},
-                'duration': 0,
+                'token_stats': {
+                    'prompt_tokens': total_prompt,
+                    'completion_tokens': total_completion,
+                    'total_tokens': total_prompt + total_completion,
+                },
+                'duration': elapsed,
             }
 
         except Exception as e:
@@ -162,7 +180,10 @@ Guidelines:
 Solve this subtask."""
 
         try:
-            fix_result: FixOutput = self._get_local_llm().invoke(prompt)
+            self._ensure_local_llm()
+            result = self._local_structured.invoke(prompt)
+            self.last_token_stats = extract_token_stats(result['raw'].response_metadata)
+            fix_result: FixOutput = result['parsed']
             return {
                 'files': [f.model_dump() for f in fix_result.files],
                 'confidence': fix_result.confidence,
@@ -216,6 +237,12 @@ Solve this subtask with expert-level code. Return JSON:
                 return None
 
             result = response.json()
+            usage = result.get('usage', {})
+            self.last_cloud_usage = {
+                'prompt_tokens': usage.get('prompt_tokens', 0),
+                'completion_tokens': usage.get('completion_tokens', 0),
+                'total_tokens': usage.get('total_tokens', 0),
+            }
             content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
             return self._parse_fix_response(content)
 
@@ -263,6 +290,12 @@ Analyze and solve this task. Return JSON:
                 return None
 
             result = response.json()
+            usage = result.get('usage', {})
+            self.last_cloud_usage = {
+                'prompt_tokens': usage.get('prompt_tokens', 0),
+                'completion_tokens': usage.get('completion_tokens', 0),
+                'total_tokens': usage.get('total_tokens', 0),
+            }
             content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
             return self._parse_fix_response(content)
 

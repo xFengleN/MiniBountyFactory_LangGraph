@@ -206,6 +206,9 @@ class TaskProcessor:
                 stats = result['token_stats']
                 self._log(task_id, 'tokens', f"Prompt: {stats.get('prompt_tokens', '?')} | Completion: {stats.get('completion_tokens', '?')} | Total: {stats.get('total_tokens', '?')}")
                 self._status[task_id]['token_stats'] = stats
+                eval_ns = stats.get('eval_duration_ns', 0)
+                if eval_ns:
+                    self._log(task_id, 'timing', f"Eval: {eval_ns / 1e6:.1f}ms | Prompt: {stats.get('prompt_eval_duration_ns', 0) / 1e6:.1f}ms | Total: {stats.get('total_duration_ns', 0) / 1e6:.1f}ms")
             if result.get('duration'):
                 self._log(task_id, 'duration', f"Processing time: {result['duration']:.1f}s")
                 self._status[task_id]['duration'] = result['duration']

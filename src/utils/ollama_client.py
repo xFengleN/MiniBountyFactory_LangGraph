@@ -168,3 +168,16 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Failed to pull model {model}: {e}")
             return False
+
+
+def extract_token_stats(metadata: dict) -> dict:
+    prompt = metadata.get('prompt_eval_count', 0) or 0
+    completion = metadata.get('eval_count', 0) or 0
+    return {
+        'prompt_tokens': prompt,
+        'completion_tokens': completion,
+        'total_tokens': prompt + completion,
+        'total_duration_ns': metadata.get('total_duration', 0) or 0,
+        'eval_duration_ns': metadata.get('eval_duration', 0) or 0,
+        'prompt_eval_duration_ns': metadata.get('prompt_eval_duration', 0) or 0,
+    }

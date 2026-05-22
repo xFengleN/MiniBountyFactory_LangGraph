@@ -6,6 +6,7 @@ from langchain_ollama import ChatOllama
 
 from ..core.config import config
 from ..utils.logger import get_logger
+from ..utils.ollama_client import extract_token_stats
 from .test_runner import TestRunner
 from .repo_mapper import RepoMapper
 
@@ -28,10 +29,13 @@ class ReviewOutput(BaseModel):
 class CicdSpecialist:
     def __init__(self):
         self._review_llm = None
+        self._review_structured = None
         self._fix_llm = None
         self._last_review_model = ''
         self._last_fix_model = ''
         self._last_base_url = ''
+        self.review_token_stats = {}
+        self.fix_token_stats = {}
         self.test_runner = TestRunner()
         self.repo_mapper = RepoMapper()
 
@@ -39,7 +43,7 @@ class CicdSpecialist:
     def model_name(self):
         return config.agents.get('roles', {}).get('cicd_specialist', 'qwen2.5-coder:7b-instruct-q4_K_M')
 
-    def _get_review_llm(self):
+    def _ensure_review_llm(self):
         model = self.model_name
         base_url = config.ollama.get('base_url', 'http://localhost:11434')
         if self._review_llm is None or model != self._last_review_model or base_url != self._last_base_url:
@@ -50,7 +54,8 @@ class CicdSpecialist:
                 base_url=base_url,
                 temperature=0.2,
                 num_predict=2048,
-            ).with_structured_output(ReviewOutput)
+            )
+            self._review_structured = self._review_llm.with_structured_output(ReviewOutput, include_raw=True)
         return self._review_llm
 
     def _get_fix_llm(self):
@@ -81,6 +86,7 @@ class CicdSpecialist:
             'review_result': {},
             'fix_cycles': 0,
             'diff_content': diff_content,
+            'token_stats': {},
         }
 
         if not repo_path:
@@ -88,6 +94,7 @@ class CicdSpecialist:
             result['validation'] = {'overall': True, 'install_ok': True, 'tests_ok': True, 'lint_ok': True}
             result['validation_passed'] = True
             review = self._run_review(diff_content, bounty)
+            result['token_stats'] = self.review_token_stats
             result.update(review)
             return result
 
@@ -98,6 +105,7 @@ class CicdSpecialist:
             result['validation'] = {'overall': True}
             result['validation_passed'] = True
             review = self._run_review(diff_content, bounty)
+            result['token_stats'] = self.review_token_stats
             result.update(review)
             return result
 
@@ -140,6 +148,9 @@ class CicdSpecialist:
 
         result['fix_cycles'] = cycle
 
+        total_prompt = self.fix_token_stats.get('prompt_tokens', 0)
+        total_completion = self.fix_token_stats.get('completion_tokens', 0)
+
         try:
             diff_result = subprocess.run(
                 ['git', 'diff', 'HEAD~1', 'HEAD'],
@@ -159,6 +170,14 @@ class CicdSpecialist:
 
         review = self._run_review(result.get('diff_content', diff_content), bounty)
         result.update(review)
+
+        total_prompt += self.review_token_stats.get('prompt_tokens', 0)
+        total_completion += self.review_token_stats.get('completion_tokens', 0)
+        result['token_stats'] = {
+            'prompt_tokens': total_prompt,
+            'completion_tokens': total_completion,
+            'total_tokens': total_prompt + total_completion,
+        }
 
         logger.info(f"CI/CD complete: validation={'PASSED' if result['validation_passed'] else 'FAILED'}, "
                     f"review={'APPROVED' if result['review_approved'] else 'REJECTED'}, "
@@ -205,19 +224,22 @@ Code Diff:
 Perform a thorough review."""
 
         try:
-            result: ReviewOutput = self._get_review_llm().invoke(prompt)
-            logger.info(f"Code review complete: approved={result.approved}, score={result.score}")
+            self._ensure_review_llm()
+            result = self._review_structured.invoke(prompt)
+            self.review_token_stats = extract_token_stats(result['raw'].response_metadata)
+            parsed: ReviewOutput = result['parsed']
+            logger.info(f"Code review complete: approved={parsed.approved}, score={parsed.score}")
 
             return {
-                'review_approved': result.approved,
-                'review_score': result.score,
+                'review_approved': parsed.approved,
+                'review_score': parsed.score,
                 'review_result': {
-                    'approved': result.approved,
-                    'issues': [issue.model_dump() for issue in result.issues],
-                    'score': result.score,
-                    'notes': result.notes,
+                    'approved': parsed.approved,
+                    'issues': [issue.model_dump() for issue in parsed.issues],
+                    'score': parsed.score,
+                    'notes': parsed.notes,
                     'model_used': self.model_name,
-                    'token_stats': {},
+                    'token_stats': self.review_token_stats,
                     'duration': 0,
                 },
             }
@@ -279,6 +301,7 @@ Make only the changes needed to fix the failures."""
 
         try:
             response = self._get_fix_llm().invoke(prompt)
+            self.fix_token_stats = extract_token_stats(response.response_metadata)
             content = response.content if hasattr(response, 'content') else str(response)
 
             import json, re

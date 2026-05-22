@@ -1,6 +1,7 @@
 import os
 import subprocess
 import shutil
+import time
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from langchain_ollama import ChatOllama
 
 from ..core.config import config
 from ..utils.logger import get_logger
+from ..utils.ollama_client import extract_token_stats
 
 logger = get_logger(__name__)
 
@@ -28,8 +30,10 @@ class FixOutput(BaseModel):
 class SimpleCoder:
     def __init__(self):
         self._llm = None
+        self._structured = None
         self._last_model = ''
         self._last_base_url = ''
+        self.last_token_stats = {}
         self.git_config = config.git
         self.max_retries = config.get('agents.max_retries', 3)
 
@@ -37,7 +41,7 @@ class SimpleCoder:
     def model_name(self):
         return config.agents.get('roles', {}).get('simple_coder', 'qwen2.5:0.5b')
 
-    def _get_llm(self):
+    def _ensure_llm(self):
         model = self.model_name
         base_url = config.ollama.get('base_url', 'http://localhost:11434')
         if self._llm is None or model != self._last_model or base_url != self._last_base_url:
@@ -48,7 +52,8 @@ class SimpleCoder:
                 base_url=base_url,
                 temperature=0.4,
                 num_predict=4096,
-            ).with_structured_output(FixOutput)
+            )
+            self._structured = self._llm.with_structured_output(FixOutput, include_raw=True)
         return self._llm
 
     def process(self, bounty: Dict[str, Any], subtask_description: str = None) -> Optional[Dict[str, Any]]:
@@ -66,6 +71,7 @@ class SimpleCoder:
         logger.info(f"SimpleCoder processing bounty {bounty_id} ({tag})")
 
         try:
+            _start = time.time()
             repo_path = self._clone_repository(repo_url, bounty_id)
             if not repo_path:
                 return None
@@ -83,6 +89,7 @@ class SimpleCoder:
                 return None
 
             diff_content = self._get_diff(repo_path)
+            elapsed = time.time() - _start
 
             return {
                 'bounty_id': bounty_id,
@@ -93,8 +100,8 @@ class SimpleCoder:
                 'confidence': fix_result.confidence,
                 'repo_path': repo_path,
                 'model_used': self.model_name,
-                'token_stats': {},
-                'duration': 0,
+                'token_stats': self.last_token_stats,
+                'duration': elapsed,
             }
 
         except Exception as e:
@@ -181,7 +188,10 @@ Repository Files (sample):
 Generate the fix for this issue."""
 
         try:
-            fix_result: FixOutput = self._get_llm().invoke(prompt)
+            self._ensure_llm()
+            result = self._structured.invoke(prompt)
+            self.last_token_stats = extract_token_stats(result['raw'].response_metadata)
+            fix_result: FixOutput = result['parsed']
             logger.info(f"Fix generated: {len(fix_result.files)} files, confidence: {fix_result.confidence:.2f}")
             return fix_result
 

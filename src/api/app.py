@@ -374,6 +374,7 @@ def serve_web_ui():
                             <h3 id="taskLogsTitle" class="text-base sm:text-lg font-bold"><i class="fas fa-terminal mr-2"></i>Task Logs</h3>
                             <button onclick="closeTaskLogsModal()" class="text-gray-400 hover:text-white p-2 min-h-[44px]"><i class="fas fa-times"></i></button>
                         </div>
+                        <div id="taskLogStats" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3"></div>
                         <div id="taskLogsContent" class="bg-gray-900 rounded p-4 flex-1 overflow-y-auto font-mono text-sm space-y-1 min-h-[400px] max-h-[70vh]">
                             <div class="text-gray-400">Loading logs...</div>
                         </div>
@@ -675,7 +676,28 @@ def serve_web_ui():
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
                 document.getElementById('taskLogsTitle').innerHTML = '<i class="fas fa-terminal mr-2"></i>Logs - Task #' + taskId;
+
+                const statsDiv = document.getElementById('taskLogStats');
+                statsDiv.classList.add('hidden');
+                statsDiv.innerHTML = '';
+
                 document.getElementById('taskLogsContent').innerHTML = '<div class="text-gray-400">Loading logs...</div>';
+
+                fetch('/api/tasks/' + taskId + '/stats')
+                    .then(r => r.json())
+                    .then(stats => {
+                        if (stats.total_tokens > 0 || stats.total_duration > 0) {
+                            let html = '';
+                            html += '<div class="bg-gray-900 rounded p-2 text-center"><div class="text-gray-500 text-xs">Duration</div><div class="text-sm font-bold text-purple-400">' + stats.total_duration.toFixed(1) + 's</div></div>';
+                            html += '<div class="bg-gray-900 rounded p-2 text-center"><div class="text-gray-500 text-xs">Total Tokens</div><div class="text-sm font-bold text-green-400">' + stats.total_tokens.toLocaleString() + '</div><div class="text-gray-500 text-[10px]">P: ' + stats.total_prompt_tokens.toLocaleString() + ' | C: ' + stats.total_completion_tokens.toLocaleString() + '</div></div>';
+                            for (const [name, m] of Object.entries(stats.models)) {
+                                html += '<div class="bg-gray-900 rounded p-2 text-center"><div class="text-gray-500 text-xs truncate" title="' + name + '">' + name + '</div><div class="text-xs text-gray-300">' + m.tokens_per_sec + ' tok/s</div><div class="text-xs text-gray-300">' + m.total_tokens.toLocaleString() + ' tok</div></div>';
+                            }
+                            statsDiv.innerHTML = html;
+                            statsDiv.classList.remove('hidden');
+                        }
+                    })
+                    .catch(e => console.error('Failed to load stats:', e));
 
                 fetch('/api/logs?bounty_id=' + taskId)
                     .then(res => res.json())
