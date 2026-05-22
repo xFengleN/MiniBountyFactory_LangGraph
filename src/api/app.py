@@ -39,7 +39,7 @@ def serve_web_ui():
         .tab-active { border-bottom: 2px solid #a855f7; color: #a855f7; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .stat-card { background: #111827; border-radius: 0.5rem; padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; transition: box-shadow 0.3s; }
+        .stat-card { background: #111827; border-radius: 0.5rem; padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; overflow: hidden; transition: box-shadow 0.3s; }
         .stat-card .label { color: #9ca3af; font-size: 0.75rem; white-space: nowrap; }
         .stat-card .value { font-size: 0.875rem; font-weight: 700; font-family: 'Courier New', monospace; white-space: nowrap; }
         .pulse .stat-card { animation: pulse-border 0.6s ease-out; }
@@ -733,34 +733,33 @@ def serve_web_ui():
                 const mTps = maxTps(models);
                 const modelEntries = Object.entries(models).slice(0, 3);
 
-                let leftHtml = '';
-                let rightHtml = '';
-
-                leftHtml += '<div class="stat-card"><span class="label">Duration</span><span class="value ' + colorForDuration(dur) + '" id="sban-dur">0.0s</span></div>';
-                rightHtml += '<div class="stat-card"><span class="label">Total Tokens</span><div class="flex items-center gap-2"><span class="value text-green-400" id="sban-tok">0</span><span class="tstat-muted text-[10px]" id="sban-tok-sub">P: 0 · C: 0</span></div></div>';
-
+                let modelHtml = '';
                 for (let i = 0; i < modelEntries.length; i++) {
                     const [name, m] = modelEntries[i];
                     const tps = m.tokens_per_sec || 0;
                     const barPct = mTps > 0 ? Math.round((tps / mTps) * 100) : 0;
-                    leftHtml += '<div class="stat-card"><span class="label truncate" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
-                    leftHtml += '<div class="flex items-center gap-2 flex-1 max-w-[50%]"><div class="mini-bar flex-1"><div class="mini-bar-fill" id="sban-bar-' + i + '" style="width:' + barPct + '%"></div></div>';
-                    leftHtml += '<span class="text-xs ' + colorForTps(tps) + '" id="sban-tps-' + i + '">0 tok/s</span></div>';
-                    leftHtml += '<span class="tstat-muted text-[10px]" id="sban-mtok-' + i + '">0 tok</span></div>';
+                    modelHtml += '<div class="stat-card"><span class="label truncate min-w-0" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
+                    modelHtml += '<div class="flex items-center gap-2 min-w-0 flex-1"><div class="mini-bar flex-1 min-w-[40px]"><div class="mini-bar-fill" id="sban-bar-' + i + '" style="width:' + barPct + '%"></div></div>';
+                    modelHtml += '<span class="text-xs ' + colorForTps(tps) + ' whitespace-nowrap" id="sban-tps-' + i + '">0 tok/s</span>';
+                    modelHtml += '<span class="tstat-muted text-[10px] whitespace-nowrap" id="sban-mtok-' + i + '">0 tok</span></div></div>';
                 }
 
-                rightHtml += '<div class="stat-card"><span class="label">Phase</span><div class="flex items-center gap-2"><div class="phase-dots">';
+                let html = '<div class="grid grid-cols-2 gap-3 mb-3' + (pulseClass ? ' pulse' : '') + '" style="grid-template-rows: auto 1fr;">';
+                html += '<div class="stat-card"><span class="label">Duration</span><span class="value ' + colorForDuration(dur) + '" id="sban-dur">0.0s</span></div>';
+                html += '<div class="stat-card"><span class="label">Total Tokens</span><div class="flex items-center gap-2 min-w-0"><span class="value text-green-400" id="sban-tok">0</span><span class="tstat-muted text-[10px] whitespace-nowrap" id="sban-tok-sub">P: 0 · C: 0</span></div></div>';
+                if (modelHtml) {
+                    html += '<div class="flex flex-col gap-2">' + modelHtml + '</div>';
+                } else {
+                    html += '<div></div>';
+                }
+                html += '<div class="stat-card"><span class="label">Phase</span><div class="flex items-center gap-2"><div class="phase-dots">';
                 for (let p = 0; p < PHASE_ORDER.length; p++) {
                     let cls = 'waiting';
                     if (p < phaseIdx) cls = 'done';
                     else if (p === phaseIdx) cls = 'active';
-                    rightHtml += '<span class="phase-dot ' + cls + '" title="' + PHASE_LABELS[PHASE_ORDER[p]] + '"></span>';
+                    html += '<span class="phase-dot ' + cls + '" title="' + PHASE_LABELS[PHASE_ORDER[p]] + '"></span>';
                 }
-                rightHtml += '</div><span class="tstat-muted text-[10px]" id="sban-phase">' + (phaseIdx >= 0 ? PHASE_LABELS[PHASE_ORDER[phaseIdx]] || step : '—') + '</span></div></div>';
-
-                let html = '<div class="grid grid-cols-2 gap-2 mb-3' + (pulseClass ? ' pulse' : '') + '">';
-                html += '<div class="flex flex-col gap-2">' + leftHtml + '</div>';
-                html += '<div class="flex flex-col gap-2">' + rightHtml + '</div>';
+                html += '</div><span class="tstat-muted text-[10px] whitespace-nowrap" id="sban-phase">' + (phaseIdx >= 0 ? PHASE_LABELS[PHASE_ORDER[phaseIdx]] || step : '—') + '</span></div></div>';
                 html += '</div>';
                 container.innerHTML = html;
                 container.classList.remove('hidden');
