@@ -283,8 +283,17 @@ def serve_web_ui():
                     </div>
 
                     <div id="panel-rejected" class="p-4 hidden">
-                        <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-700">
-                            <div class="ml-auto flex gap-2">
+                        <div class="flex flex-wrap gap-3 mb-4 pb-3 border-b border-gray-700 items-end">
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">Sort By</label>
+                                <select id="sortByRejected" onchange="loadRejectedReviews()" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm">
+                                    <option value="finished_desc">Rejected (Newest)</option>
+                                    <option value="finished_asc">Rejected (Oldest)</option>
+                                    <option value="created_desc">Created (Newest)</option>
+                                    <option value="created_asc">Created (Oldest)</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end gap-2 ml-auto">
                                 <button onclick="retryAllRejected()" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-sm">
                                     <i class="fas fa-redo mr-1"></i> Retry All
                                 </button>
@@ -1447,6 +1456,21 @@ def serve_web_ui():
                     const container = document.getElementById('rejectedList');
                     document.getElementById('count-rejected').textContent = reviews.length;
                     if (reviews.length === 0) { container.innerHTML = '<div class="text-gray-400">No rejected reviews</div>'; return; }
+
+                    const sortBy = document.getElementById('sortByRejected').value;
+                    reviews.sort((a, b) => {
+                        const aCreated = new Date(a.created_at || 0);
+                        const bCreated = new Date(b.created_at || 0);
+                        const aFinished = new Date(a.reviewed_at || 0);
+                        const bFinished = new Date(b.reviewed_at || 0);
+                        switch (sortBy) {
+                            case 'finished_desc': return bFinished - aFinished;
+                            case 'finished_asc': return aFinished - bFinished;
+                            case 'created_desc': return bCreated - aCreated;
+                            case 'created_asc': return aCreated - bCreated;
+                            default: return bFinished - aFinished;
+                        }
+                    });
 
                     window._reviewsData = window._reviewsData || {};
                     container.innerHTML = '';
