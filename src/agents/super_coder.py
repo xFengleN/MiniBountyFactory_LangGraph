@@ -82,11 +82,12 @@ class SuperCoder:
         else:
             return self._solve_locally(bounty=bounty, subtask_description=subtask_description, subtask_id=subtask_id)
 
-    def process(self, bounty: Dict[str, Any], subtasks: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def process(self, bounty: Dict[str, Any], subtasks: List[Dict[str, Any]],
+                repo_path: str = None, subtask_branch: str = None) -> Optional[Dict[str, Any]]:
         bounty_id = bounty.get('id')
         repo_url = bounty.get('repository_url', '')
 
-        if not repo_url:
+        if not repo_url and not repo_path:
             logger.error(f"No repository URL for bounty {bounty_id}")
             return None
 
@@ -97,9 +98,18 @@ class SuperCoder:
 
         try:
             _start = time.time()
-            repo_path = self._clone_repository(repo_url, bounty_id)
-            if not repo_path:
-                return None
+
+            if repo_path and subtask_branch:
+                # Shared workspace mode
+                subprocess.run(['git', 'checkout', subtask_branch],
+                               cwd=repo_path, capture_output=True, text=True)
+                used_repo = repo_path
+                used_branch = subtask_branch
+            else:
+                used_repo = self._clone_repository(repo_url, bounty_id)
+                if not used_repo:
+                    return None
+                used_branch = f"bounty-fix-{bounty_id}"
 
             all_files = []
             total_prompt = 0
@@ -112,11 +122,11 @@ class SuperCoder:
                 logger.info(f"SuperCoder subtask {subtask_id}: {subtask_desc[:50]}...")
 
                 if self.api_key:
-                    fix_result = self._solve_subtask_with_cloud(repo_path, subtask_desc, bounty, subtask_id)
+                    fix_result = self._solve_subtask_with_cloud(used_repo, subtask_desc, bounty, subtask_id)
                     total_prompt += self.last_cloud_usage.get('prompt_tokens', 0)
                     total_completion += self.last_cloud_usage.get('completion_tokens', 0)
                 else:
-                    fix_result = self._solve_subtask_locally(repo_path, subtask_desc, bounty, subtask_id)
+                    fix_result = self._solve_subtask_locally(used_repo, subtask_desc, bounty, subtask_id)
                     total_prompt += self.last_token_stats.get('prompt_tokens', 0)
                     total_completion += self.last_token_stats.get('completion_tokens', 0)
 
@@ -127,23 +137,21 @@ class SuperCoder:
                 logger.warning(f"No fix generated for bounty {bounty_id}")
                 return None
 
-            branch_name = f"bounty-fix-{bounty_id}"
-            commit_sha = self._create_commit(repo_path, branch_name, {'files': all_files}, bounty_id)
-
+            commit_sha = self._create_commit(used_repo, used_branch, {'files': all_files}, bounty_id)
             if not commit_sha:
                 return None
 
-            diff_content = self._get_diff(repo_path)
+            diff_content = self._get_diff(used_repo)
             elapsed = time.time() - _start
 
             return {
                 'bounty_id': bounty_id,
-                'branch_name': branch_name,
+                'branch_name': used_branch,
                 'commit_sha': commit_sha,
                 'diff_content': diff_content,
                 'files_changed': all_files,
                 'confidence': 0.7,
-                'repo_path': repo_path,
+                'repo_path': used_repo,
                 'model_used': self.model_name,
                 'token_stats': {
                     'prompt_tokens': total_prompt,
@@ -343,11 +351,11 @@ Analyze and solve this task. Return JSON:
             workspace_base = str(Path(__file__).parent.parent.parent / 'bounty_workspaces')
 
         task_dir = str(Path(workspace_base) / f'bounty_{bounty_id}')
-        Path(task_dir).mkdir(parents=True, exist_ok=True)
 
-        if (Path(task_dir) / '.git').exists():
-            logger.info(f"Workspace already exists for bounty {bounty_id}, skipping clone")
-            return task_dir
+        # Always re-clone (no skip) to avoid dirty workspace on graph retry
+        if Path(task_dir).exists():
+            shutil.rmtree(task_dir)
+        Path(task_dir).mkdir(parents=True, exist_ok=True)
 
         try:
             if 'github.com' in repo_url:

@@ -56,14 +56,15 @@ class SimpleCoder:
             self._structured = self._llm.with_structured_output(FixOutput, include_raw=True)
         return self._llm
 
-    def process(self, bounty: Dict[str, Any], subtask_description: str = None) -> Optional[Dict[str, Any]]:
+    def process(self, bounty: Dict[str, Any], subtask_description: str = None,
+                repo_path: str = None, subtask_branch: str = None) -> Optional[Dict[str, Any]]:
         bounty_id = bounty.get('id')
         title = bounty.get('title', '')
         description = bounty.get('description', '')
         repo_url = bounty.get('repository_url', '')
         issue_url = bounty.get('issue_url', '')
 
-        if not repo_url:
+        if not repo_url and not repo_path:
             logger.error(f"No repository URL for bounty {bounty_id}")
             return None
 
@@ -72,33 +73,40 @@ class SimpleCoder:
 
         try:
             _start = time.time()
-            repo_path = self._clone_repository(repo_url, bounty_id)
-            if not repo_path:
-                return None
 
-            fix_result = self._generate_fix(repo_path, title, description, issue_url, subtask_description)
+            if repo_path and subtask_branch:
+                # Shared workspace mode — branch already exists, just switch to it
+                subprocess.run(['git', 'checkout', subtask_branch],
+                               cwd=repo_path, capture_output=True, text=True)
+                used_repo = repo_path
+                used_branch = subtask_branch
+            else:
+                used_repo = self._clone_repository(repo_url, bounty_id)
+                if not used_repo:
+                    return None
+                used_branch = f"bounty-fix-{bounty_id}"
+
+            fix_result = self._generate_fix(used_repo, title, description, issue_url, subtask_description)
 
             if not fix_result or not fix_result.files:
                 logger.warning(f"No fix generated for bounty {bounty_id} ({tag})")
                 return None
 
-            branch_name = f"bounty-fix-{bounty_id}"
-            commit_sha = self._create_commit(repo_path, branch_name, fix_result, bounty_id)
-
+            commit_sha = self._create_commit(used_repo, used_branch, fix_result, bounty_id)
             if not commit_sha:
                 return None
 
-            diff_content = self._get_diff(repo_path)
+            diff_content = self._get_diff(used_repo)
             elapsed = time.time() - _start
 
             return {
                 'bounty_id': bounty_id,
-                'branch_name': branch_name,
+                'branch_name': used_branch,
                 'commit_sha': commit_sha,
                 'diff_content': diff_content,
                 'files_changed': [f.model_dump() for f in fix_result.files],
                 'confidence': fix_result.confidence,
-                'repo_path': repo_path,
+                'repo_path': used_repo,
                 'model_used': self.model_name,
                 'token_stats': self.last_token_stats,
                 'duration': elapsed,
@@ -114,11 +122,11 @@ class SimpleCoder:
             workspace_base = str(Path(__file__).parent.parent.parent / 'bounty_workspaces')
 
         task_dir = Path(workspace_base) / f'bounty_{bounty_id}'
-        task_dir.mkdir(parents=True, exist_ok=True)
 
-        if (task_dir / '.git').exists():
-            logger.info(f"Workspace already exists for bounty {bounty_id}, skipping clone")
-            return str(task_dir)
+        # Always re-clone (no skip) to avoid dirty workspace on graph retry
+        if task_dir.exists():
+            shutil.rmtree(task_dir)
+        task_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             if 'github.com' in repo_url:

@@ -31,6 +31,7 @@ class BountyState(TypedDict, total=False):
 
     retry_count: int
     last_validation_errors: List[str]
+    subtask_branches: List[str]
 
     error: str
     status: str

@@ -1,4 +1,7 @@
-from typing import Dict, Any
+import shutil
+import subprocess as _subprocess
+from pathlib import Path
+from typing import Dict, Any, List
 
 from .state import BountyState
 from ..agents.dispatcher import Dispatcher
@@ -22,6 +25,39 @@ _simple_coder = SimpleCoder()
 _super_coder = SuperCoder()
 _cicd_specialist = CicdSpecialist()
 _repo_mapper = RepoMapper()
+
+
+def _run_git(repo_path: str, args: List[str]) -> tuple:
+    """Run a git command in repo_path. Returns (stdout, returncode)."""
+    try:
+        r = _subprocess.run(['git'] + args, cwd=repo_path,
+                            capture_output=True, text=True, timeout=30)
+        return r.stdout.strip(), r.returncode
+    except Exception as e:
+        logger.error(f"git {' '.join(args)} failed: {e}")
+        return '', -1
+
+
+def _topological_sort(subtasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Kahn's algorithm — sort subtasks by depends_on."""
+    by_id = {s['id']: s for s in subtasks}
+    in_degree = {s['id']: 0 for s in subtasks}
+    for s in subtasks:
+        for dep in s.get('depends_on', []):
+            if dep in by_id:
+                in_degree[s['id']] = in_degree.get(s['id'], 0) + 1
+
+    queue = [s['id'] for s in subtasks if in_degree.get(s['id'], 0) == 0]
+    result = []
+    while queue:
+        nid = queue.pop(0)
+        result.append(by_id[nid])
+        for s in subtasks:
+            if nid in s.get('depends_on', []):
+                in_degree[s['id']] -= 1
+                if in_degree[s['id']] == 0:
+                    queue.append(s['id'])
+    return result
 
 
 def precheck_node(state: BountyState) -> dict:
@@ -156,80 +192,109 @@ def coder_node(state: BountyState) -> dict:
 
     db.log_processing(bounty_id, "coder", f"complex mode: {len(subtasks)} subtasks", "processing")
 
-    simple_subtasks = [s for s in subtasks if s.get('role') == 'simple_coder']
-    super_subtasks = [s for s in subtasks if s.get('role') == 'super_coder']
+    # ---- shared workspace: single clone, isolated branches per subtask ----
+    workspace_base = config.get('workspace.base_path')
+    if not workspace_base:
+        workspace_base = str(Path(__file__).parent.parent.parent / 'bounty_workspaces')
+    workspace_path = Path(workspace_base) / f'bounty_{bounty_id}'
 
-    all_files = []
-    repo_path = None
+    repo_url = bounty.get('repository_url', '')
+    if not repo_url:
+        return {"error": "No repository URL", "status": "failed"}
+
+    if workspace_path.exists():
+        shutil.rmtree(workspace_path)
+    workspace_path.mkdir(parents=True, exist_ok=True)
+
+    from .sandbox import _clone_repo as _sandbox_clone
+    github_token = config.git.get('token')
+    if not _sandbox_clone(repo_url, workspace_path, github_token):
+        return {"error": "Git clone failed", "status": "failed"}
+
     branch_name = f"bounty-fix-{bounty_id}"
-    commit_sha = None
-    final_diff = ""
+    _run_git(str(workspace_path), ["checkout", "-b", branch_name])
+
+    sorted_subtasks = _topological_sort(subtasks)
+
+    subtask_branches = []
+    all_files = []
     total_prompt = 0
     total_completion = 0
     total_duration = 0.0
     model_used = ""
 
-    if simple_subtasks:
-            for subtask in simple_subtasks:
-                subtask_id = subtask.get('id')
-                subtask_desc = subtask.get('description', '')
-                logger.info(f"Coder running simple_coder subtask {subtask_id}")
+    for subtask in sorted_subtasks:
+        sub_branch = f"bounty-fix-{bounty_id}-sub-{subtask['id']}"
+        role = subtask.get('role', 'simple_coder')
+        logger.info(f"Coder: subtask {subtask['id']} ({role}) on branch {sub_branch}")
+        db.log_processing(bounty_id, "coder", f"subtask {subtask['id']} ({role})", "processing")
 
-                result = _simple_coder.process(bounty, subtask_description=subtask_desc)
+        _run_git(str(workspace_path), ["checkout", branch_name])
+        _run_git(str(workspace_path), ["checkout", "-b", sub_branch])
 
-                if result:
-                    all_files.extend(result.get('files_changed', []))
-                    repo_path = result.get('repo_path', repo_path)
-                    commit_sha = result.get('commit_sha', commit_sha)
-                    ts = result.get('token_stats', {})
-                    total_prompt += ts.get('prompt_tokens', 0)
-                    total_completion += ts.get('completion_tokens', 0)
-                    total_duration += result.get('duration', 0)
-                    if result.get('model_used'):
-                        model_used = result['model_used']
+        if role == 'simple_coder':
+            result = _simple_coder.process(
+                bounty,
+                subtask_description=subtask.get('description', ''),
+                repo_path=str(workspace_path),
+                subtask_branch=sub_branch,
+            )
+        elif role == 'super_coder':
+            result = _super_coder.process(
+                bounty,
+                [subtask],
+                repo_path=str(workspace_path),
+                subtask_branch=sub_branch,
+            )
+        else:
+            logger.warning(f"Unknown subtask role: {role}, dropping branch")
+            _run_git(str(workspace_path), ["checkout", branch_name])
+            _run_git(str(workspace_path), ["branch", "-D", sub_branch])
+            continue
 
-    if super_subtasks:
-            result = _super_coder.process(bounty, super_subtasks)
-            if result:
-                all_files.extend(result.get('files_changed', []))
-                repo_path = result.get('repo_path', repo_path)
-                commit_sha = result.get('commit_sha', commit_sha)
-                ts = result.get('token_stats', {})
-                total_prompt += ts.get('prompt_tokens', 0)
-                total_completion += ts.get('completion_tokens', 0)
-                total_duration += result.get('duration', 0)
-                if result.get('model_used'):
-                    model_used = result['model_used']
+        if result:
+            all_files.extend(result.get('files_changed', []))
+            subtask_branches.append(sub_branch)
+            ts = result.get('token_stats', {})
+            total_prompt += ts.get('prompt_tokens', 0)
+            total_completion += ts.get('completion_tokens', 0)
+            total_duration += result.get('duration', 0)
+            if result.get('model_used'):
+                model_used = result['model_used']
+            logger.info(f"Coder: subtask {subtask['id']} completed")
+        else:
+            logger.warning(f"Coder: subtask {subtask['id']} failed, dropping branch")
+            _run_git(str(workspace_path), ["checkout", branch_name])
+            _run_git(str(workspace_path), ["branch", "-D", sub_branch])
+
+    _run_git(str(workspace_path), ["checkout", branch_name])
 
     if not all_files:
         logger.warning(f"No fix generated for complex bounty {bounty_id}")
         db.log_processing(bounty_id, "coder", "no_result", "failed")
         return {"error": "No subtask produced a fix", "status": "failed"}
 
-    if repo_path:
-        try:
-            import subprocess
-            diff_result = subprocess.run(
-                ['git', 'diff', 'HEAD~1', 'HEAD'],
-                cwd=repo_path,
-                capture_output=True,
-                text=True
-            )
-            final_diff = diff_result.stdout
-        except Exception:
-            pass
+    # Build combined diff across all subtask branches
+    combined_diff_parts = []
+    for branch in subtask_branches:
+        out, rc = _run_git(str(workspace_path), ["diff", f"{branch_name}..." + branch])
+        if out:
+            combined_diff_parts.append(f"# {branch}\n{out}")
+    final_diff = "\n\n".join(combined_diff_parts)
 
-    role_counts = {}
-    for s in subtasks:
-        role_counts[s.get('role', 'unknown')] = role_counts.get(s.get('role', 'unknown'), 0) + 1
+    _run_git(str(workspace_path), ["checkout", branch_name])
+    head_sha, _ = _run_git(str(workspace_path), ["rev-parse", "HEAD"])
 
-    db.log_processing(bounty_id, "coder", f"complete: {len(all_files)} files", "processing")
+    db.log_processing(bounty_id, "coder",
+                      f"complete: {len(all_files)} files across {len(subtask_branches)} subtask branches",
+                      "processing")
 
     return {
         "agent_type": "coder",
-        "repo_path": repo_path or "",
+        "repo_path": str(workspace_path),
         "branch_name": branch_name,
-        "commit_sha": commit_sha or "",
+        "subtask_branches": subtask_branches,
+        "commit_sha": head_sha,
         "diff_content": final_diff,
         "files_changed": all_files,
         "model_used": model_used,
@@ -239,7 +304,7 @@ def coder_node(state: BountyState) -> dict:
             "total_tokens": total_prompt + total_completion,
         },
         "duration": total_duration,
-        "subtasks_completed": len(subtasks),
+        "subtasks_completed": len(subtask_branches),
         "retry_count": retry_count,
     }
 
@@ -249,9 +314,52 @@ def cicd_specialist_node(state: BountyState) -> dict:
     bounty_id = state["bounty_id"]
     repo_path = state.get("repo_path", "")
     diff_content = state.get("diff_content", "")
+    subtask_branches = state.get("subtask_branches", [])
+    branch_name = state.get("branch_name", f"bounty-fix-{bounty_id}")
 
     logger.info(f"Node cicd_specialist: bounty {bounty_id}")
     db.log_processing(bounty_id, "cicd", "start", "processing")
+
+    # === Gatekeeper: merge subtask branches one by one, test after each ===
+    if repo_path and subtask_branches and Path(repo_path).exists():
+        _run_git(repo_path, ["checkout", branch_name])
+        initial_head, _ = _run_git(repo_path, ["rev-parse", "HEAD"])
+        merged = []
+        for branch in subtask_branches:
+            out, rc = _run_git(repo_path, ["merge", "--no-edit", branch])
+            if rc != 0:
+                _run_git(repo_path, ["merge", "--abort"])
+                logger.warning(f"Gatekeeper: merge conflict on {branch}, dropping")
+                db.log_processing(bounty_id, "cicd", f"gatekeeper: {branch} merge conflict, dropped", "warning")
+                continue
+
+            repo_map = _repo_mapper.map(repo_path)
+            validation = _cicd_specialist.test_runner.validate_fix(repo_path, repo_map, {})
+            if not validation.get('overall', False):
+                _run_git(repo_path, ["reset", "--hard", "HEAD~1"])
+                logger.warning(f"Gatekeeper: tests failed after merging {branch}, dropping")
+                db.log_processing(bounty_id, "cicd", f"gatekeeper: {branch} tests failed, dropped", "warning")
+                continue
+
+            merged.append(branch)
+            logger.info(f"Gatekeeper: {branch} merged and validated")
+            db.log_processing(bounty_id, "cicd", f"gatekeeper: {branch} merged", "processing")
+
+        if not merged:
+            logger.warning("Gatekeeper: no subtask branches survived, nothing to review")
+            return {
+                "validation_passed": False,
+                "validation": {"overall": False, "failures": ["All subtask branches failed gatekeeping"]},
+                "review_approved": False,
+                "review_score": 0,
+                "last_validation_errors": ["All subtask branches failed gatekeeping"],
+                "error": "All subtask branches failed gatekeeping",
+            }
+
+        # Update diff to reflect the merged state
+        out, rc = _run_git(repo_path, ["diff", initial_head, "HEAD"])
+        if out:
+            diff_content = out
 
     try:
         result = _cicd_specialist.process(bounty, diff_content, repo_path)
@@ -296,6 +404,13 @@ def cicd_specialist_node(state: BountyState) -> dict:
         }
         if cicd_stats.get("total_tokens", 0) > 0:
             ret["token_stats"] = cicd_stats
+
+        if not validation_passed:
+            failures = result.get("last_validation_errors", []) or result.get("validation", {}).get("failures", [])
+            if failures:
+                ret["error"] = f"Validation failed after {result.get('fix_cycles', 0)} fix cycles: {'; '.join(failures[:3])}"
+            else:
+                ret["error"] = "Validation failed after all fix cycles"
         return ret
 
     except Exception as e:

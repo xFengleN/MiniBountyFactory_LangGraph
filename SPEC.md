@@ -78,59 +78,84 @@
 ### 2.2 LangGraph Workflow
 
 ```
-START
-  │
-  ▼
-┌─────────────┐
-│  Precheck   │ ← GitHub issue validation
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  Classify   │ ← simple vs complex routing
-└──────┬──────┘
-       │
-  ┌────┴────┐
-  ▼         ▼
-┌──────┐ ┌─────────┐
-│Simple│ │ Complex │
-│Agent │ │ Agent   │
-└──┬───┘ └───┬─────┘
-   └────┬────┘
+ START
+   │
+   ▼
+ ┌──────────────┐
+ │  Precheck    │ ← GitHub issue validation
+ └──────┬───────┘
+        │
         ▼
-┌─────────────┐
-│  Validate   │ ← install/test/lint
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐     Yes     ┌─────────────┐
-│  Review     │ ──────────▶ │ Enqueue     │ ──▶ END (queued_for_review)
-│  (auto)     │             │ Review      │
-└─────────────┘             └─────────────┘
+ ┌──────────────┐
+ │  Dispatcher  │ ← classify (simple vs complex)
+ │              │    decompose into subtasks (complex only)
+ └──────┬───────┘
+        │
+   ┌────┴────┐
+   ▼         ▼
+ ┌──────┐  ┌──────────┐
+ │Simple│  │ Complex  │
+ │(sand│  │(single   │
+ │box)  │  │ clone +  │
+ │      │  │ branch/  │
+ │      │  │ subtask) │
+ └──┬───┘  └──┬───────┘
+    └────┬────┘
+         ▼
+ ┌──────────────┐
+ │ CI/CD        │ ← Gatekeeper: merge branches one
+ │ Specialist   │   by one, test after each merge,
+ │              │   then LLM review + test-fix loop
+ └──────┬───────┘
+    ┌────┴────┐
+    ▼         ▼
+ ┌─────────┐  ┌──────────┐
+ │ Enqueue │  │ Retry    │ ← back to coder
+ │ Review  │  │ (max_    │    with context
+ └────┬────┘  │ send_back│
+      │       └──────────┘
+      ▼
+    END (queued_for_review / failed)
 ```
 
-### 2.3 Sandbox Architecture
+### 2.3 Hybrid Sandbox Architecture
+
+The factory uses a **Hybrid Sandbox Architecture** — a single shared Git workspace with
+isolated feature branches per agent, gated by a CI/CD Gatekeeper.
 
 ```
-┌─────────────────────────────────────────┐
-│  Host (macOS)                           │
-│  - Clones repo (fast native SSD)        │
-│  - Reads relevant files                 │
-│  - Writes task config to temp file      │
-│  - Mounts config into container         │
-│  - Receives fix JSON from container     │
-│  - Applies files, commits, validates    │
-│                                         │
-│  ┌───────────────────────────────────┐  │
-│  │  Podman Container (isolated)      │  │
-│  │  - Read-only root FS              │  │
-│  │  - 2 CPU, 2GB RAM limit           │  │
-│  │  - Receives config via volume     │  │
-│  │  - Calls Ollama (host.internal)   │  │
-│  │  - Outputs fix JSON to stdout     │  │
-│  │  - NO git, NO file I/O            │  │
-│  └───────────────────────────────────┘  │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  HOST (macOS) — Single Workspace per Bounty              │
+│                                                          │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │  Shared Clone  ../bounty_workspaces/bounty_{id}/    │ │
+│  │                                                     │ │
+│  │  ┌───────────────────────────────────────────────┐  │ │
+│  │  │  main (or bounty-fix-{id})                    │  │ │
+│  │  │   ▲        ▲        ▲                         │  │ │
+│  │  │   │merge   │merge   │merge                    │  │ │
+│  │  │   │        │        │                         │  │ │
+│  │  │  ┌─┴──┐  ┌─┴──┐  ┌─┴──┐                      │  │ │
+│  │  │  │sub │  │sub │  │sub │                      │  │ │
+│  │  │  │   1│  │   2│  │   3│                      │  │ │
+│  │  │  └────┘  └────┘  └────┘                      │  │ │
+│  │  │   coder    coder    coder                     │  │ │
+│  │  └───────────────────────────────────────────────┘  │ │
+│  │                                                     │ │
+│  │  CI/CD Gatekeeper:                                  │ │
+│  │    1. merge branch → run tests                      │ │
+│  │    2. if fail → drop branch (git reset --hard)      │ │
+│  │    3. if pass → keep merge, next branch             │ │
+│  │    4. then run LLM review + test-fix cycles         │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                                                          │
+│  ┌───────────────────────────────────────────────────┐   │
+│  │  Podman Container (isolated validation)           │   │
+│  │  - Runs install + test commands                   │   │
+│  │  - 2 CPU, 2GB RAM, no network                     │   │
+│  │  - NO git access, receives workspace via podman cp │   │
+│  └───────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### 2.4 Agent Decision Tree
@@ -139,51 +164,47 @@ START
 Bounty Task
      │
      ▼
-┌─────────────────┐
-│  Task Classifier│
-│ (qwen2.5:0.5b)  │
-└────────┬────────┘
+┌──────────────────┐
+│   Dispatcher     │
+│ classifies +     │
+│ decomposes       │
+│ (single LLM call)│
+└──────┬───────────┘
+       │
+  ┌────┴────┐
+  │         │
+ Simple   Complex
+  │         │
+  ▼         ▼
+┌───────┐ ┌───────────────────────────┐
+│Simple │ │ Shared Clone + Branches   │
+│Agent  │ │ (coder_node orchestrates) │
+│(sand- │ │                           │
+│box)   │ │ subtask_1 ─ simple_coder  │
+│       │ │ subtask_2 ─ super_coder   │
+│       │ │ subtask_3 ─ simple_coder  │
+└───┬───┘ └───────────┬───────────────┘
+    │                 │
+    └────────┬────────┘
+             ▼
+┌────────────────────┐
+│  CI/CD Gatekeeper  │
+│  merge branch 1    │
+│  → run tests       │
+│  → if pass, keep   │
+│  merge branch 2    │
+│  → run tests       │
+│  → if fail, drop   │
+│  ...then LLM review│
+│  + test-fix loop   │
+└────────┬───────────┘
          │
     ┌────┴────┐
-    │         │
- Simple?   Complex?
-    │         │
     ▼         ▼
-┌───────┐ ┌────────────┐
-│Simple │ │Complex     │
-│Agent  │ │Agent       │
-│Sandbox│ │(Decompose) │
-└───┬───┘ └───┬────────┘
-    │         │
-    └────┬────┘
-         ▼
-┌────────────────┐
-│ Pre-check      │
-│ (assignee,     │
-│  claims,       │
-│  CONTRIBUTING) │
-└────────┬───────┘
-         ▼
-┌────────────────┐
-│ Repo Mapper    │
-│ Test Runner    │
-│ (validate)     │
-└────────┬───────┘
-         ▼
-┌────────────────┐
-│ Code Review    │
-│ Agent          │
-└────────┬───────┘
-         ▼
-┌────────────────┐
-│Human Review    │
-│    Queue       │
-└────────┬───────┘
-         ▼
-┌────────────────┐
-│PR Creator      │
-│(After approve) │
-└────────────────┘
+ Enqueue   Retry to
+ Review    coder (if
+           max_send_back
+           not exceeded)
 ```
 
 ## 3. Functionality Specification
@@ -213,25 +234,33 @@ Bounty Task
 - **Output:** Classification (simple/complex) + confidence score
 - **Difficulty Levels:** 3 tiers × 3 sub-levels (Easy 1-3, Medium 1-3, Hard 1-3)
 
-### 3.4 Simple Task Agent (Podman Sandbox)
+### 3.4 Simple Task Agent (Sandbox)
 
 - **Model:** `qwen2.5-coder:7b-instruct-q4_K_M`
 - **Purpose:** Single-file fixes, typos, small bugs
 - **Capabilities:**
-  - Host clones repository to workspace
-  - Container receives task config via volume mount
-  - Container calls Ollama on host, generates fix JSON
-  - Host applies fix, creates branch and commit
+  - `sandbox.run_sandbox_task()` clones repo, generates fix via host Ollama, applies files, commits, validates in Podman container
   - Tracks token usage and duration
+  - Container validation: install + test inside isolated Podman container
 
-### 3.5 Complex Task Agent (Podman Sandbox)
+### 3.5 Complex Task Agent (Shared Workspace + Branches)
 
-- **Model:** `qwen2.5-coder:7b-instruct-q4_K_M`
-- **Purpose:** Multi-file changes, architectural issues
-- **Features:**
-  - Task decomposition into subtasks (LangChain structured output)
-  - Each subtask solved via sandboxed LLM
-  - Fallback to direct fix generation if no subtasks
+- **Role:** `coder_node` in `nodes.py`
+- **Purpose:** Multi-file changes, architectural issues across multiple subtasks
+- **Architecture:** Hybrid Sandbox — single shared clone with isolated Git branches
+- **Flow:**
+  1. `coder_node` clones the repository **once**
+  2. Subtasks are sorted by `depends_on` (topological order)
+  3. For each subtask, a dedicated branch is created: `bounty-fix-{id}-sub-{n}`
+  4. Appropriate coder (simple_coder or super_coder) runs on that branch
+  5. If a subtask fails, its branch is dropped (`git branch -D`)
+  6. Successful subtask branches are recorded in state
+- **Subtask model:**
+  - `id` — unique subtask identifier
+  - `description` — natural language instructions
+  - `role` — `simple_coder` or `super_coder`
+  - `depends_on` — list of subtask IDs that must complete first
+  - `estimated_complexity` — human-readable estimate
 
 ### 3.6 Pre-check System
 
@@ -255,7 +284,22 @@ Bounty Task
 - **Failure Extraction** - Identifies error/failed/expect/exception lines
 - **Execution Report** - Saves `execution_report.json` in workspace
 
-### 3.9 Code Review Agent
+### 3.9 CI/CD Gatekeeper (Branch Merge + Validation)
+
+Before the LLM review, the CI/CD Specialist acts as a **Gatekeeper** to merge and validate subtask branches:
+
+1. **Checkout** the base branch
+2. For each subtask branch (in order):
+   - `git merge --no-edit <branch>`
+   - If merge conflict → `git merge --abort`, drop branch
+   - Run `test_runner.validate_fix()` on merged result
+   - If tests fail → `git reset --hard HEAD~1`, drop branch
+   - If pass → keep merge, proceed to next branch
+3. If **all** branches dropped → return error
+4. Update `diff_content` to reflect merged state
+5. Proceed with LLM review + test-fix cycles on the fully merged result
+
+### 3.10 Code Review Agent
 
 - **Model:** `qwen2.5-coder:7b-instruct-q4_K_M`
 - **Checks:** Syntax correctness, style consistency, edge cases, security
@@ -323,18 +367,26 @@ All config via `config/config.yaml`:
 
 ## 6. Data Flow
 
-1. **Scan** - Fetch from Algora tRPC + GitHub Scout → store in SQLite
-2. **Process** - User clicks "Process" → pre-check → classify → route to agent
-3. **Generate** - Host clones repo → container calls Ollama → host applies fix, commits
-4. **Validate** - Repo mapper detects commands → test runner runs install/test/lint
-5. **Review** - Code reviewer scores the fix
-6. **Queue** - Fix added to review queue with diff, comment, workspace path
-7. **Human Review** - User reviews in web UI, approves/rejects/skips
-8. **Submit** - On approval, PR is created on GitHub
+1. **Scan** — Fetch from Algora tRPC + GitHub Scout → store in SQLite
+2. **Process** — User clicks "Process" → precheck → dispatcher → route to coder
+3. **Simple path** — `run_sandbox_task()`: host clones repo, calls Ollama, applies fix, commits, validates in Podman container
+4. **Complex path** — `coder_node`:
+   4a. Clones repo **once** into shared workspace
+   4b. Sorts subtasks by `depends_on` (topological order)
+   4c. For each subtask: creates isolated branch → runs coder (simple/super) → if success, records branch; if fails, deletes branch
+5. **CI/CD Gatekeeper** — merges subtask branches one by one, running `test_runner.validate_fix()` after each merge; drops branches that conflict or fail
+6. **CI/CD Review** — LLM code review + test-fix cycles on the fully merged result
+7. **Queue** — Fix added to human review queue with combined diff, comment, workspace path
+8. **Human Review** — User reviews in web UI, approves/rejects/trashes
+9. **Submit** — On approval, PR is created on GitHub
 
 ## 7. Workspace Management
 
 - **Path:** `../bounty_workspaces/bounty_<id>/` (relative to project root)
+- **Single shared clone:** One repo clone per bounty, used by all agents
+- **Branch isolation:** Each subtask works on its own branch (`bounty-fix-{id}-sub-{n}`) — no file collisions
+- **Atomic rollback:** CI/CD drops branches via `git branch -D` on conflict/failure; base branch remains clean
+- **Cumulative diffs:** CI/CD merges branches into base one by one with validation after each merge
 - **Persistence:** Repos survive restarts, can be inspected via "Show in Finder"
 - **Cleanup:** Auto-delete untouched tasks after 30 days
 - **Manual:** "Clear All Untouched" button in UI, individual task deletion

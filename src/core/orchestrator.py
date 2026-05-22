@@ -131,7 +131,13 @@ class BountyFactoryOrchestrator:
                     'duration': final_state.get('duration', 0),
                 }
             elif status == "failed":
-                error = final_state.get("error", "Unknown error")
+                error = final_state.get("error")
+                if not error:
+                    last_errors = final_state.get("last_validation_errors", [])
+                    if last_errors:
+                        error = f"Validation failed after retries exhausted: {'; '.join(last_errors[:3])}"
+                    else:
+                        error = "Unknown error"
                 logger.warning(f"Bounty {bounty_id} failed in graph: {error}")
                 db.update_bounty_status(bounty_id, 'failed')
                 return {'success': False, 'error': error}

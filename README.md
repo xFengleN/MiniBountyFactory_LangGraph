@@ -10,9 +10,10 @@ Autonomous bounty hunting system for Algora.io and GitHub issues. Finds open bou
 - **Role-Based Agent Model Selection** - Configure different models for each agent role via web UI dropdowns (Ollama + OpenCode GO)
 - **4 Specialized Agents** - Dispatcher, Simple Coder, Super Coder, CI/CD Specialist
   - **Dispatcher** - Single LLM call classifies AND optionally decomposes tasks; routes simple tasks directly, breaks complex tasks into subtasks
-  - **Simple Coder** - Handles simple fixes, boilerplate, unit tests, scripts, refactoring (was Simple Agent + Junior Coder)
-  - **Super Coder** - Reserved for complex architecture, multi-file sync, algorithmic bottlenecks (unchanged)
-  - **CI/CD Specialist** - Test-fix loop: runs tests, reads failures, fixes code, re-runs until green, then reviews (was Reviewer + Tester)
+  - **Simple Coder** - Handles simple fixes, boilerplate, unit tests, scripts, refactoring
+  - **Super Coder** - Reserved for complex architecture, multi-file sync, algorithmic bottlenecks
+  - **CI/CD Specialist** - Gatekeeper: merges subtask branches one-by-one with tests, then LLM review + test-fix cycles
+- **Hybrid Sandbox Architecture** — single shared clone per bounty, isolated Git branches per subtask, CI/CD gatekeeper merges and validates
 - **Repo Mapping** - Auto-detects framework, package manager, test/lint commands for JS, Python, Go, Rust, C#
 - **Validation** - Runs install, tests, and lint checks before queuing for review
 - **Code Review** - Self-review with local LLM before human approval
@@ -44,23 +45,24 @@ Autonomous bounty hunting system for Algora.io and GitHub issues. Finds open bou
                            ▼
                     ┌──────────────┐
                     │  Dispatcher  │
-                    │ (classify +  │
-                    │  decompose)  │
+                    │ classify +   │
+                    │ decompose    │
                     └──────┬───────┘
                            ▼
                     ┌──────────────┐
                     │    Coder     │
-                    │ (simple_coder│
-                    │  OR super_   │
-                    │  coder per   │
-                    │  subtask)    │
+                    │  Shared Clone│
+                    │  + Branches  │
+                    │  per subtask │
                     └──────┬───────┘
                            ▼
                     ┌──────────────┐
-                    │CI/CD Specialist
-                    │ (test-fix    │
-                    │  loop +      │
-                    │  review)     │
+                    │CI/CD Gatekeeper
+                    │ merge branch │
+                    │ 1 → test,    │
+                    │ merge branch │
+                    │ 2 → test...  │
+                    │ then review  │
                     └──────┬───────┘
                            ▼
                     ┌──────────────┐
@@ -72,21 +74,13 @@ Autonomous bounty hunting system for Algora.io and GitHub issues. Finds open bou
                     │  PR Creator  │
                     └──────────────┘
 
-Sandbox Architecture:
-┌─────────────────────────────────────────┐
-│  Host (macOS)                           │
-│  - Clones repo (fast native SSD)        │
-│  - Reads files, passes to container     │
-│  - Applies fix, commits, validates      │
-│                                         │
-│  ┌───────────────────────────────────┐  │
-│  │  Podman Container (isolated)      │  │
-│  │  - Receives task config via mount │  │
-│  │  - Calls Ollama on host           │  │
-│  │  - Outputs fix JSON to stdout     │  │
-│  │  - NO git, NO file I/O            │  │
-│  └───────────────────────────────────┘  │
-└─────────────────────────────────────────┘
+Hybrid Sandbox (one shared clone per bounty):
+ bounty_{id}/
+  ├── main (base branch)
+  ├── bounty-fix-{id}-sub-1 ◀── simple_coder works here
+  ├── bounty-fix-{id}-sub-2 ◀── super_coder works here
+  │
+  CI/CD merges each branch → tests → drop if fail
 ```
 
 ## Prerequisites
@@ -196,22 +190,54 @@ python main.py --daemon
 
 ## How It Works
 
-1. **Scan** - Fetch bounties from Algora tRPC API or GitHub issues with bounty labels
-2. **Pre-check** - Validates issue availability, checks assignments, reads CONTRIBUTING.md
-3. **Dispatch** - Dispatcher (Ollama) classifies simple vs complex; if complex, decomposes into subtasks
-4. **Code** - Simple Coder handles simple tasks; Super Coder handles complex subtasks; all inside Podman sandbox
-5. **CI/CD** - Test-fix loop: runs install/tests/lint, fixes failures, re-runs until green; then runs code review
-6. **Queue** - Fix added to human review queue with diff, comment, and workspace path
-7. **Human Review** - You review in the web UI with GitHub-style diff viewer, inspect workspace, approve/reject
-8. **Submit** - On approval, branch is pushed and PR is created on GitHub
+1. **Scan** — Fetch bounties from Algora tRPC API or GitHub issues with bounty labels
+2. **Pre-check** — Validates issue availability, checks assignments, reads CONTRIBUTING.md
+3. **Dispatch** — Dispatcher (Ollama) classifies simple vs complex; if complex, decomposes into subtasks with `depends_on` relationships
+4. **Coder** — **Simple tasks**: sandbox clones, generates fix, applies, validates in Podman container. **Complex tasks**: `coder_node` clones repo **once**, creates isolated Git branches per subtask (sorted by dependency order), runs each coder on its branch, drops failed branches
+5. **CI/CD Gatekeeper** — Merges subtask branches **one by one** into the base branch, running `test_runner.validate_fix()` after each merge. Branches that conflict or break tests are dropped (`git reset --hard`). Then runs LLM review + test-fix cycles on the fully merged result
+6. **Queue** — Fix added to human review queue with combined diff, comment, and workspace path
+7. **Human Review** — You review in the web UI with GitHub-style diff viewer, inspect workspace, approve/reject/trash
+8. **Submit** — On approval, branch is pushed and PR is created on GitHub
 
 ### Dispatching & Task Decomposition
 
 The Dispatcher handles both simple and complex tasks in a single LLM call. If the task is complex, it emits a decomposition plan with subtasks assigned to roles:
-- **simple_coder** - Simple, routine changes
-- **super_coder** - Complex, architectural changes
+- **simple_coder** — Simple, routine changes
+- **super_coder** — Complex, architectural changes
+
+Each subtask includes a `depends_on` field listing prerequisite subtask IDs. The `coder_node` performs a topological sort (Kahn's algorithm) to guarantee execution order.
 
 Processing logs show subtask distribution: `Dispatch: mode=decompose, classification=complex, subtasks: 6 simple_coder, 3 super_coder`
+
+### Hybrid Sandbox Architecture
+
+Complex task processing uses a **single shared clone** per bounty with **isolated Git branches**:
+
+```
+coder_node:
+  1. Clone repo ONCE into workspace/bounty_{id}/
+  2. Create base branch: bounty-fix-{id}
+  3. For each subtask (in dependency order):
+     a. Create branch: bounty-fix-{id}-sub-{n} from base
+     b. Run coder on that branch (simple_coder or super_coder)
+     c. If success → keep branch; if fail → git branch -D
+  4. Return list of successful branch names to state
+
+CI/CD Gatekeeper:
+  1. Checkout base branch
+  2. For each subtask branch:
+     a. git merge --no-edit <branch>
+     b. If conflict → git merge --abort, drop branch
+     c. Run test_runner.validate_fix()
+     d. If tests fail → git reset --hard HEAD~1, drop branch
+     e. If pass → keep merge
+  3. Proceed with LLM review + test-fix cycles
+```
+
+**Benefits:**
+- **Atomic rollbacks** — Failed subtasks don't corrupt the base branch; just `git branch -D`
+- **No file collisions** — Each subtask modifies its own isolated Git layer
+- **Early integration testing** — CI/CD catches merge conflicts and test regressions after each branch merge
 
 ## Graceful Shutdown
 
@@ -286,7 +312,7 @@ bounty_factory/
 │   ├── core/                    # Core modules
 │   │   ├── orchestrator.py      # LangGraph workflow orchestrator
 │   │   ├── graph.py             # StateGraph definition + compilation
-│   │   ├── nodes.py             # Graph node wrappers (role-based model resolution)
+│   │   ├── nodes.py             # Graph node wrappers (gatekeeper merge, shared clone + branches)
 │   │   ├── state.py             # BountyState TypedDict
 │   │   ├── task_processor.py    # Async background task queue
 │   │   ├── sandbox.py           # Podman sandbox orchestration

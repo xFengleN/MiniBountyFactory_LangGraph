@@ -504,20 +504,17 @@ def run_sandbox_task(
 
     model = model or config.agents.get('roles', {}).get('simple_coder', "qwen2.5:0.5b")
 
-    # Step 1: Clone on host
-    if sandbox_dir.exists() and (sandbox_dir / ".git").exists():
-        _log(bounty_id, "sandbox", "Workspace already exists, skipping clone", "processing")
-    else:
-        if sandbox_dir.exists():
-            shutil.rmtree(sandbox_dir)
-        sandbox_dir.mkdir(parents=True, exist_ok=True)
+    # Step 1: Clone on host (always fresh — no skip-clone to avoid dirty workspace on retry)
+    if sandbox_dir.exists():
+        shutil.rmtree(sandbox_dir)
+    sandbox_dir.mkdir(parents=True, exist_ok=True)
 
-        _log(bounty_id, "sandbox", "Cloning repo on host", "processing")
-        github_token = config.git.get("token")
-        if not _clone_repo(repo_url, sandbox_dir, github_token):
-            _log(bounty_id, "sandbox", "Git clone failed", "error")
-            return {"success": False, "error": "Git clone failed"}
-        _log(bounty_id, "sandbox", "Repo cloned on host", "processing")
+    _log(bounty_id, "sandbox", "Cloning repo on host", "processing")
+    github_token = config.git.get("token")
+    if not _clone_repo(repo_url, sandbox_dir, github_token):
+        _log(bounty_id, "sandbox", "Git clone failed", "error")
+        return {"success": False, "error": "Git clone failed"}
+    _log(bounty_id, "sandbox", "Repo cloned on host", "processing")
 
     # Step 2: Read relevant files
     repo_files = _read_repo_files(sandbox_dir)
