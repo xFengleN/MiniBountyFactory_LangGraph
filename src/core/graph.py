@@ -32,11 +32,13 @@ def route_after_cicd(state: BountyState) -> str:
     pass_count = state.get("retry_count", 0)
     max_send_back = config.get('agents.max_send_back', 2)
 
-    if state.get("review_approved", False):
+    validation_passed = state.get("validation_passed", False)
+    review_approved = state.get("review_approved", False)
+
+    if validation_passed and review_approved:
         return "enqueue_review"
 
-    validation_passed = state.get("validation_passed", False)
-    if not validation_passed and pass_count <= max_send_back:
+    if pass_count <= max_send_back:
         logger.info(f"Routing back to coder (pass {pass_count}/{max_send_back + 1})")
         return "coder"
 
