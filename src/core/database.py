@@ -249,6 +249,18 @@ class Database:
             """)
             return [dict(row) for row in cursor.fetchall()]
 
+    def get_rejected_reviews(self) -> List[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT r.*, b.title, b.description, b.repository_url, b.price, b.repository_name, b.issue_url
+                FROM review_queue r
+                JOIN bounties b ON r.bounty_id = b.id
+                WHERE r.status = 'reviewed' AND r.review_action = 'rejected'
+                ORDER BY r.reviewed_at DESC
+            """)
+            return [dict(row) for row in cursor.fetchall()]
+
     def has_pending_review_for(self, bounty_id: int) -> bool:
         with self.get_connection() as conn:
             cursor = conn.cursor()

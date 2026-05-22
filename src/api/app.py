@@ -155,6 +155,9 @@ def serve_web_ui():
                         <button onclick="switchTab('reviews')" id="tab-reviews" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
                             <i class="fas fa-clipboard-check mr-1 sm:mr-2"></i>Pending Reviews <span id="count-reviews" class="ml-1 text-xs bg-green-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
+                        <button onclick="switchTab('rejected')" id="tab-rejected" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
+                            <i class="fas fa-ban mr-1 sm:mr-2"></i>Rejected <span id="count-rejected" class="ml-1 text-xs bg-red-600 px-2 py-0.5 rounded-full">0</span>
+                        </button>
                         <button onclick="switchTab('logs')" id="tab-logs" class="px-3 sm:px-6 py-3 font-medium text-gray-400 whitespace-nowrap text-sm">
                             <i class="fas fa-terminal mr-1 sm:mr-2"></i>Logs
                         </button>
@@ -276,6 +279,22 @@ def serve_web_ui():
                         </div>
                         <div id="reviewsList" class="space-y-3">
                             <div class="text-gray-400">No pending reviews</div>
+                        </div>
+                    </div>
+
+                    <div id="panel-rejected" class="p-4 hidden">
+                        <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-700">
+                            <div class="ml-auto flex gap-2">
+                                <button onclick="retryAllRejected()" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-sm">
+                                    <i class="fas fa-redo mr-1"></i> Retry All
+                                </button>
+                                <button onclick="deleteAllRejected()" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm">
+                                    <i class="fas fa-trash mr-1"></i> Delete All
+                                </button>
+                            </div>
+                        </div>
+                        <div id="rejectedList" class="space-y-3">
+                            <div class="text-gray-400">No rejected reviews</div>
                         </div>
                     </div>
 
@@ -560,7 +579,7 @@ def serve_web_ui():
 
             function switchTab(tab) {
                 currentTab = tab;
-                const tabs = ['new', 'processing', 'failed', 'reviews', 'logs'];
+                const tabs = ['new', 'processing', 'failed', 'reviews', 'rejected', 'logs'];
                 tabs.forEach(t => {
                     const tabEl = document.getElementById('tab-' + t);
                     const panelEl = document.getElementById('panel-' + t);
@@ -572,6 +591,7 @@ def serve_web_ui():
                     }
                 });
                 if (tab === 'reviews') loadReviews();
+                if (tab === 'rejected') loadRejectedReviews();
                 if (tab === 'logs') loadLogs();
                 if (['new', 'processing', 'failed'].includes(tab)) applyFilters();
             }
@@ -1418,6 +1438,102 @@ def serve_web_ui():
                         container.appendChild(div);
                     });
                 } catch (e) { console.error('Load reviews failed:', e); }
+            }
+
+            async function loadRejectedReviews() {
+                try {
+                    const res = await fetch('/api/reviews?status=rejected');
+                    let reviews = await res.json();
+                    const container = document.getElementById('rejectedList');
+                    document.getElementById('count-rejected').textContent = reviews.length;
+                    if (reviews.length === 0) { container.innerHTML = '<div class="text-gray-400">No rejected reviews</div>'; return; }
+
+                    window._reviewsData = window._reviewsData || {};
+                    container.innerHTML = '';
+                    reviews.forEach(r => {
+                        window._reviewsData[r.id] = r;
+                        const title = (r.title || 'Untitled').replace(/</g, '&lt;');
+                        const repo = (r.repository_name || 'Unknown repo').replace(/</g, '&lt;');
+                        const agent = (r.agent_type || 'unknown').replace(/</g, '&lt;');
+                        const taskId = r.bounty_id || r.id;
+                        const reason = (r.reviewer_comments || '').replace(/</g, '&lt;');
+
+                        const div = document.createElement('div');
+                        div.className = 'bg-gray-750 rounded-lg p-4 border border-gray-700';
+                        div.innerHTML = `
+                            <div class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="px-2 py-0.5 rounded bg-gray-600 font-mono text-xs">#${taskId}</span>
+                                        <h3 class="font-bold">${title}</h3>
+                                    </div>
+                                    <p class="text-gray-400 text-sm">${repo}</p>
+                                    <div class="flex flex-wrap gap-3 mt-2 text-xs">
+                                        <span class="text-gray-400">Agent: ${agent}</span>
+                                        ${reason ? `<span class="text-red-400">Reason: ${reason}</span>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                <button onclick="showReviewDiff(${r.id})" class="text-sm text-purple-400 hover:text-purple-300 bg-gray-700 px-3 py-1.5 rounded"><i class="fas fa-code mr-1"></i> View Diff</button>
+                                ${r.review_notes ? `<button onclick="showReviewComment(${r.id})" class="text-sm text-purple-400 hover:text-purple-300 bg-gray-700 px-3 py-1.5 rounded"><i class="fas fa-comment mr-1"></i> View Comment</button>` : ''}
+                                <button onclick="viewTaskLogs(${taskId})" class="text-sm text-gray-400 hover:text-gray-300 bg-gray-700 px-3 py-1.5 rounded"><i class="fas fa-terminal mr-1"></i> Logs</button>
+                                <button onclick="retryRejected(${r.id}, ${taskId})" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-sm"><i class="fas fa-redo mr-1"></i> Retry</button>
+                                <button onclick="deleteRejected(${r.id}, ${taskId})" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm"><i class="fas fa-trash mr-1"></i> Delete</button>
+                            </div>
+                        `;
+                        container.appendChild(div);
+                    });
+                } catch (e) { console.error('Load rejected reviews failed:', e); }
+            }
+
+            async function retryRejected(reviewId, taskId) {
+                if (!confirm('Retry this task? It will be reset and processed again.')) return;
+                try {
+                    await fetch('/api/reviews/' + reviewId + '/retry', { method: 'POST' });
+                    loadRejectedReviews();
+                    refreshAll();
+                } catch (e) { alert('Retry failed: ' + e.message); }
+            }
+
+            async function deleteRejected(reviewId, taskId) {
+                if (!confirm('Delete this task permanently?')) return;
+                try {
+                    await fetch('/api/tasks/' + taskId + '/delete', { method: 'DELETE' });
+                    // Also clean up the review queue entry
+                    await fetch('/api/reviews/' + reviewId + '/delete', { method: 'DELETE' });
+                    loadRejectedReviews();
+                    refreshAll();
+                } catch (e) { alert('Delete failed: ' + e.message); }
+            }
+
+            async function retryAllRejected() {
+                const container = document.getElementById('rejectedList');
+                const items = container.querySelectorAll('[data-review-id]');
+                if (!confirm('Retry all rejected tasks?')) return;
+                try {
+                    const res = await fetch('/api/reviews?status=rejected');
+                    const reviews = await res.json();
+                    for (const r of reviews) {
+                        await fetch('/api/reviews/' + r.id + '/retry', { method: 'POST' });
+                    }
+                    loadRejectedReviews();
+                    refreshAll();
+                } catch (e) { alert('Retry all failed: ' + e.message); }
+            }
+
+            async function deleteAllRejected() {
+                if (!confirm('Delete all rejected tasks permanently?')) return;
+                try {
+                    const res = await fetch('/api/reviews?status=rejected');
+                    const reviews = await res.json();
+                    for (const r of reviews) {
+                        await fetch('/api/tasks/' + (r.bounty_id || r.id) + '/delete', { method: 'DELETE' });
+                        await fetch('/api/reviews/' + r.id + '/delete', { method: 'DELETE' });
+                    }
+                    loadRejectedReviews();
+                    refreshAll();
+                } catch (e) { alert('Delete all failed: ' + e.message); }
             }
 
             function showReviewDiff(id) {
@@ -2318,7 +2434,10 @@ def open_workspace():
 def get_reviews():
     status_filter = request.args.get('status', 'pending')
 
-    reviews = db.get_pending_reviews() if status_filter == 'pending' else []
+    if status_filter == 'rejected':
+        reviews = db.get_rejected_reviews()
+    else:
+        reviews = db.get_pending_reviews() if status_filter == 'pending' else []
 
     return jsonify(reviews)
 
@@ -2380,6 +2499,7 @@ def reject_review(review_id):
     db.update_review(review_id, 'rejected', comments)
 
     if bounty_id:
+        db.update_bounty_status(bounty_id, 'rejected')
         from ..core.sandbox import cleanup_workspace
         cleanup_workspace(bounty_id)
 
@@ -2407,6 +2527,36 @@ def skip_review(review_id):
         'success': True,
         'review_id': review_id
     })
+
+
+@app.route('/api/reviews/<int:review_id>/retry', methods=['POST'])
+def retry_review(review_id):
+    reviews = db.get_rejected_reviews()
+    review = next((r for r in reviews if r['id'] == review_id), None)
+    if not review:
+        return jsonify({'error': 'Review not found or not in rejected state'}), 404
+
+    bounty_id = review['bounty_id']
+    db.update_bounty_status(bounty_id, 'new')
+    db.update_review(review_id, 'retried', 'Retrying')
+    from ..core.sandbox import cleanup_workspace
+    cleanup_workspace(bounty_id)
+
+    task_id_str = str(bounty_id)
+    if task_id_str in task_processor._status:
+        del task_processor._status[task_id_str]
+    if task_id_str in task_processor._logs:
+        del task_processor._logs[task_id_str]
+
+    result = orchestrator.process_single_bounty(bounty_id)
+    return jsonify({'success': True, 'message': 'Task restarted', 'auto_started': True})
+
+
+@app.route('/api/reviews/<int:review_id>/delete', methods=['DELETE'])
+def delete_review(review_id):
+    with db.get_connection() as conn:
+        conn.cursor().execute("DELETE FROM review_queue WHERE id = ?", (review_id,))
+    return jsonify({'success': True})
 
 
 @app.route('/api/start', methods=['POST'])
