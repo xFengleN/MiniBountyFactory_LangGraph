@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -370,14 +371,27 @@ def _run_validation_in_container(
             raise Exception(f"Container create failed: {create_result.stderr}")
         container_id = create_result.stdout.strip()
 
-        # Copy workspace into container
+        # Copy workspace into container (exclude .git and node_modules to avoid symlink/copy issues on macOS)
         _log(bounty_id, "sandbox", "Copying workspace into container", "processing")
-        cp_result = subprocess.run(
-            [runtime, "cp", str(sandbox_dir), f"{container_id}:/workspace"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        _cp_tmp = None
+        try:
+            _cp_tmp = tempfile.mkdtemp(prefix=f"bounty-sandbox-{bounty_id}-")
+            _exclude_names = {'.git', 'node_modules'}
+            for item in sandbox_dir.iterdir():
+                if item.name not in _exclude_names:
+                    dst = Path(_cp_tmp) / item.name
+                    if item.is_dir():
+                        shutil.copytree(item, dst, symlinks=False, ignore_dangling_symlinks=True)
+                    else:
+                        shutil.copy2(item, dst)
+            cp_result = subprocess.run(
+                [runtime, "cp", str(_cp_tmp) + "/.", f"{container_id}:/workspace"],
+                capture_output=True, text=True, timeout=120,
+            )
+        finally:
+            if _cp_tmp and Path(_cp_tmp).exists():
+                shutil.rmtree(_cp_tmp, ignore_errors=True)
+
         if cp_result.returncode != 0:
             raise Exception(f"Container cp failed: {cp_result.stderr}")
 
