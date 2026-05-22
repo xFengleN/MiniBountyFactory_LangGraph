@@ -43,7 +43,8 @@ class BountyFactoryOrchestrator:
     def start(self):
         logger.info("Starting Bounty Factory Orchestrator")
         self.running = True
-        task_processor.start()
+        max_concurrent = config.get('agents.max_concurrent_tasks', 1)
+        task_processor.start(max_concurrent=max_concurrent)
 
         self.worker_thread = threading.Thread(target=self._run_worker, daemon=True)
         self.worker_thread.start()

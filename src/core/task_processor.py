@@ -1,7 +1,7 @@
 import threading
 import queue
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from ..core.database import db
@@ -27,37 +27,50 @@ class TaskProcessor:
         self._status: Dict[str, Dict[str, Any]] = {}
         self._logs: Dict[str, list] = {}
         self._cancelled: set = set()
-        self._worker_thread = None
+        self._worker_threads: List[threading.Thread] = []
         self._running = False
         self._shutdown_event = threading.Event()
-        self._current_task_id: Optional[str] = None
+        self._active_tasks: set = set()
         self._initialized = True
 
-    def start(self):
+    def start(self, max_concurrent: int = 1):
         if self._running:
             return
 
         self._running = True
         self._shutdown_event.clear()
-        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True, name='task-processor')
-        self._worker_thread.start()
-        logger.info("Task processor started")
+        self._max_concurrent = max(1, max_concurrent)
+        self._concurrency_lock = threading.Lock()
+        self._active_slots = 0
+        self._worker_threads = []
+        for i in range(self._max_concurrent):
+            t = threading.Thread(target=self._worker_loop, daemon=True, name=f'task-worker-{i}')
+            t.start()
+            self._worker_threads.append(t)
+        logger.info(f"Task processor started with {self._max_concurrent} worker(s)")
+
+    def set_max_concurrent(self, n: int):
+        """Update max concurrency at runtime (applies to new tasks)."""
+        with self._concurrency_lock:
+            self._max_concurrent = max(1, n)
 
     def stop(self, timeout: int = 3):
         logger.info("Stopping task processor...")
         self._running = False
         self._shutdown_event.set()
 
-        if self._current_task_id:
-            logger.info(f"Waiting for current task {self._current_task_id} to finish (timeout: {timeout}s)")
+        if self._active_tasks:
+            logger.info(f"Waiting for {len(self._active_tasks)} active task(s) to finish (timeout: {timeout}s)")
 
-        if self._worker_thread and self._worker_thread.is_alive():
-            self._worker_thread.join(timeout=timeout)
-            if self._worker_thread.is_alive():
-                logger.warning("Task processor thread did not finish within timeout")
-            else:
-                logger.info("Task processor thread finished")
+        for t in self._worker_threads:
+            if t.is_alive():
+                t.join(timeout=timeout)
+                if t.is_alive():
+                    logger.warning(f"Worker {t.name} did not finish within timeout")
+                else:
+                    logger.info(f"Worker {t.name} finished")
 
+        self._worker_threads = []
         logger.info("Task processor stopped")
 
     def is_shutdown_requested(self) -> bool:
@@ -132,15 +145,35 @@ class TaskProcessor:
                 self._queue.task_done()
                 continue
 
-            try:
-                self._process_task(task_id, bounty_id, process_fn)
-            except Exception as e:
-                logger.error(f"Task {task_id} failed: {e}")
-                if task_id in self._status:
-                    self._status[task_id]['status'] = 'error'
-                    self._status[task_id]['error'] = str(e)
-                    self._status[task_id]['completed_at'] = datetime.utcnow().isoformat() + '+00:00'
+            # Wait until a slot is available
+            while self._running:
+                with self._concurrency_lock:
+                    if self._active_slots < self._max_concurrent:
+                        self._active_slots += 1
+                        break
+                time.sleep(0.5)
 
+            self._active_tasks.add(task_id)
+            t = threading.Thread(
+                target=self._run_task,
+                args=(task_id, bounty_id, process_fn),
+                daemon=True,
+            )
+            t.start()
+
+    def _run_task(self, task_id: str, bounty_id: int, process_fn):
+        try:
+            self._process_task(task_id, bounty_id, process_fn)
+        except Exception as e:
+            logger.error(f"Task {task_id} failed: {e}")
+            if task_id in self._status:
+                self._status[task_id]['status'] = 'error'
+                self._status[task_id]['error'] = str(e)
+                self._status[task_id]['completed_at'] = datetime.utcnow().isoformat() + '+00:00'
+        finally:
+            self._active_tasks.discard(task_id)
+            with self._concurrency_lock:
+                self._active_slots = max(0, self._active_slots - 1)
             self._queue.task_done()
 
     def _process_task(self, task_id: str, bounty_id: int, process_fn):
@@ -149,7 +182,6 @@ class TaskProcessor:
             logger.info(f"Task {task_id} cancelled before start")
             return
 
-        self._current_task_id = task_id
         self._update_progress(task_id, 5, 'Starting...')
         self._status[task_id]['status'] = 'processing'
         self._status[task_id]['started_at'] = datetime.utcnow().isoformat() + '+00:00'
@@ -185,7 +217,6 @@ class TaskProcessor:
             self._status[task_id]['status'] = 'cancelled'
             self._log(task_id, 'cancelled', 'Task was cancelled by user')
             db.update_bounty_status(bounty_id, 'new')
-            self._current_task_id = None
             return
 
         try:
@@ -224,7 +255,6 @@ class TaskProcessor:
             self._log(task_id, 'error', error)
 
         self._status[task_id]['completed_at'] = datetime.utcnow().isoformat() + '+00:00'
-        self._current_task_id = None
 
     def get_active_tasks(self) -> Dict[str, Dict[str, Any]]:
         return {k: v for k, v in self._status.items() if v.get('status') in ('queued', 'processing')}

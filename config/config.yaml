@@ -22,7 +22,7 @@ opencode:
 agents:
   roles:
     dispatcher: qwen2.5:0.5b
-    simple_coder: qwen2.5-coder:3b
+    simple_coder: qwen2.5-coder:7b-instruct-q4_K_M
     super_coder: qwen2.5-coder:7b-instruct-q4_K_M
     cicd_specialist: qwen2.5-coder:3b
   simple_task_max_loc: 50
@@ -31,6 +31,7 @@ agents:
   retry_delay: 60
   max_local_fix_cycles: 3
   max_send_back: 2
+  max_concurrent_tasks: 1
 database:
   path: data/bounty_factory.db
 workspace:

@@ -461,6 +461,11 @@ def serve_web_ui():
                                         <p class="text-xs text-gray-500 mt-0.5">Max times CI/CD sends back to coder for regeneration</p>
                                     </div>
                                 </div>
+                                <div class="mt-3">
+                                    <label class="block text-xs text-gray-400 mb-1">Max Concurrent Tasks</label>
+                                    <input type="number" id="cfgMaxConcurrentTasks" min="1" max="10" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono" style="max-width:120px">
+                                    <p class="text-xs text-gray-500 mt-0.5">Number of tasks to process in parallel (1 = sequential)</p>
+                                </div>
                             </div>
 
                             <div>
@@ -1138,6 +1143,7 @@ def serve_web_ui():
 
                     document.getElementById('cfgMaxLocalCycles').value = cfg.agents?.max_local_fix_cycles ?? 3;
                     document.getElementById('cfgMaxSendBack').value = cfg.agents?.max_send_back ?? 2;
+                    document.getElementById('cfgMaxConcurrentTasks').value = cfg.agents?.max_concurrent_tasks ?? 1;
 
                     document.getElementById('cfgGitUsername').value = cfg.git?.username || '';
                     document.getElementById('cfgGitToken').value = cfg.git?.token || '';
@@ -1172,6 +1178,7 @@ def serve_web_ui():
                         },
                         max_local_fix_cycles: parseInt(document.getElementById('cfgMaxLocalCycles').value) || 3,
                         max_send_back: parseInt(document.getElementById('cfgMaxSendBack').value) || 2,
+                        max_concurrent_tasks: parseInt(document.getElementById('cfgMaxConcurrentTasks').value) || 1,
                     },
                 };
 
@@ -2800,6 +2807,8 @@ def update_config():
                 cfg['agents']['max_local_fix_cycles'] = int(a['max_local_fix_cycles'])
             if 'max_send_back' in a:
                 cfg['agents']['max_send_back'] = int(a['max_send_back'])
+            if 'max_concurrent_tasks' in a:
+                cfg['agents']['max_concurrent_tasks'] = int(a['max_concurrent_tasks'])
 
         if 'sandbox' in data:
             s = data['sandbox']
