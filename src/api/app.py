@@ -733,30 +733,34 @@ def serve_web_ui():
                 const mTps = maxTps(models);
                 const modelEntries = Object.entries(models).slice(0, 3);
 
-                let html = '<div class="space-y-2 mb-3' + (pulseClass ? ' pulse' : '') + '">';
+                let leftHtml = '';
+                let rightHtml = '';
 
-                html += '<div class="stat-card"><span class="label">Duration</span><span class="value ' + colorForDuration(dur) + '" id="sban-dur">0.0s</span></div>';
-                html += '<div class="stat-card"><span class="label">Total Tokens</span><span class="value text-green-400" id="sban-tok">0</span><span class="tstat-muted text-[10px]" id="sban-tok-sub">P: 0 · C: 0</span></div>';
+                leftHtml += '<div class="stat-card"><span class="label">Duration</span><span class="value ' + colorForDuration(dur) + '" id="sban-dur">0.0s</span></div>';
+                rightHtml += '<div class="stat-card"><span class="label">Total Tokens</span><div class="flex items-center gap-2"><span class="value text-green-400" id="sban-tok">0</span><span class="tstat-muted text-[10px]" id="sban-tok-sub">P: 0 · C: 0</span></div></div>';
 
                 for (let i = 0; i < modelEntries.length; i++) {
                     const [name, m] = modelEntries[i];
                     const tps = m.tokens_per_sec || 0;
                     const barPct = mTps > 0 ? Math.round((tps / mTps) * 100) : 0;
-                    html += '<div class="stat-card"><span class="label truncate" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
-                    html += '<div class="flex items-center gap-2 flex-1 max-w-[50%]"><div class="mini-bar flex-1"><div class="mini-bar-fill" id="sban-bar-' + i + '" style="width:' + barPct + '%"></div></div>';
-                    html += '<span class="text-xs ' + colorForTps(tps) + '" id="sban-tps-' + i + '">0 tok/s</span></div>';
-                    html += '<span class="tstat-muted text-[10px]" id="sban-mtok-' + i + '">0 tok</span></div>';
+                    leftHtml += '<div class="stat-card"><span class="label truncate" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
+                    leftHtml += '<div class="flex items-center gap-2 flex-1 max-w-[50%]"><div class="mini-bar flex-1"><div class="mini-bar-fill" id="sban-bar-' + i + '" style="width:' + barPct + '%"></div></div>';
+                    leftHtml += '<span class="text-xs ' + colorForTps(tps) + '" id="sban-tps-' + i + '">0 tok/s</span></div>';
+                    leftHtml += '<span class="tstat-muted text-[10px]" id="sban-mtok-' + i + '">0 tok</span></div>';
                 }
 
-                html += '<div class="stat-card"><span class="label">Phase</span><div class="flex items-center gap-2"><div class="phase-dots">';
+                rightHtml += '<div class="stat-card"><span class="label">Phase</span><div class="flex items-center gap-2"><div class="phase-dots">';
                 for (let p = 0; p < PHASE_ORDER.length; p++) {
                     let cls = 'waiting';
                     if (p < phaseIdx) cls = 'done';
                     else if (p === phaseIdx) cls = 'active';
-                    html += '<span class="phase-dot ' + cls + '" title="' + PHASE_LABELS[PHASE_ORDER[p]] + '"></span>';
+                    rightHtml += '<span class="phase-dot ' + cls + '" title="' + PHASE_LABELS[PHASE_ORDER[p]] + '"></span>';
                 }
-                html += '</div><span class="tstat-muted text-[10px]" id="sban-phase">' + (phaseIdx >= 0 ? PHASE_LABELS[PHASE_ORDER[phaseIdx]] || step : '—') + '</span></div></div>';
+                rightHtml += '</div><span class="tstat-muted text-[10px]" id="sban-phase">' + (phaseIdx >= 0 ? PHASE_LABELS[PHASE_ORDER[phaseIdx]] || step : '—') + '</span></div></div>';
 
+                let html = '<div class="grid grid-cols-2 gap-2 mb-3' + (pulseClass ? ' pulse' : '') + '">';
+                html += '<div class="flex flex-col gap-2">' + leftHtml + '</div>';
+                html += '<div class="flex flex-col gap-2">' + rightHtml + '</div>';
                 html += '</div>';
                 container.innerHTML = html;
                 container.classList.remove('hidden');
