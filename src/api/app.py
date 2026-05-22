@@ -2886,14 +2886,29 @@ def clear_untouched_tasks():
 
 def run_server(port: int = 5000, debug: bool = False):
     global orchestrator, _startup_time
+    import sys as _sys
+    import os as _os
+    import signal as _signal
     from ..core.task_processor import task_processor
     _startup_time = time.time()
     orchestrator = BountyFactoryOrchestrator()
     task_processor.start()
-    try:
-        app.run(host='0.0.0.0', port=port, debug=debug)
-    finally:
+
+    _shutting_down = False
+
+    def _shutdown(sig, frame):
+        nonlocal _shutting_down
+        if _shutting_down:
+            return
+        _shutting_down = True
+        print(f"\nReceived {_signal.Signals(sig).name}, shutting down...", flush=True)
         orchestrator.stop()
+        _os._exit(0)
+
+    _signal.signal(_signal.SIGINT, _shutdown)
+    _signal.signal(_signal.SIGTERM, _shutdown)
+
+    app.run(host='0.0.0.0', port=port, debug=debug)
 
 
 if __name__ == '__main__':
