@@ -129,8 +129,15 @@ class BountyFactoryOrchestrator:
         if cfg['mode'] in ('free', 'both'):
             if self.github_scout.is_available():
                 logger.info("Fetching free issues from GitHub...")
-                gh_count = self.github_scout.fetch_and_store()
-                logger.info(f"Fetched {gh_count} issues from GitHub")
+                gh_issues = self.github_scout.search_issues(limit=20)
+                if config.get('test_mode.skip_paid', False):
+                    before = len(gh_issues)
+                    gh_issues = [i for i in gh_issues if not i.get('is_bounty') and not i.get('price')]
+                    if before != len(gh_issues):
+                        logger.info(f"skip_paid: filtered {before - len(gh_issues)} paid issues (kept {len(gh_issues)})")
+                if gh_issues:
+                    self.github_scout.store_issues(gh_issues)
+                    logger.info(f"Stored {len(gh_issues)} free issues")
 
         pending_bounties = db.get_pending_bounties()
         min_p = cfg['min_price']
@@ -346,6 +353,13 @@ class BountyFactoryOrchestrator:
                     if len(issues) >= limit:
                         break
                 issues = issues[:limit]
+
+                if config.get('test_mode.skip_paid', False):
+                    before = len(issues)
+                    issues = [i for i in issues if not i.get('is_bounty') and not i.get('price')]
+                    if before != len(issues):
+                        logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
+
                 count = self.github_scout.store_issues(issues)
         else:
             algora_bounties = self.algora_client.fetch_bounties(limit=limit)

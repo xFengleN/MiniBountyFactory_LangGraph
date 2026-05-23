@@ -558,15 +558,15 @@ def serve_web_ui():
                         <label class="block text-sm text-gray-400 mb-1">Source</label>
                         <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
                             <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="radio" name="startMode" value="free" id="startModeFree" checked class="accent-purple-500">
+                                <input type="radio" name="startMode" value="free" id="startModeFree" checked onchange="updateStartMode()" class="accent-purple-500">
                                 <span class="text-sm">Free Tasks (GitHub)</span>
                             </label>
                             <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="radio" name="startMode" value="paid" id="startModePaid" class="accent-purple-500">
+                                <input type="radio" name="startMode" value="paid" id="startModePaid" onchange="updateStartMode()" class="accent-purple-500">
                                 <span class="text-sm">Paid Bounties (Algora)</span>
                             </label>
                             <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="radio" name="startMode" value="both" id="startModeBoth" class="accent-purple-500">
+                                <input type="radio" name="startMode" value="both" id="startModeBoth" onchange="updateStartMode()" class="accent-purple-500">
                                 <span class="text-sm">Both</span>
                             </label>
                         </div>
@@ -704,6 +704,14 @@ def serve_web_ui():
                 const isTest = document.getElementById('scanModeTest').checked;
                 document.getElementById('priceRangeSection').classList.toggle('hidden', isTest);
                 document.getElementById('labelSelectorSection').classList.toggle('hidden', !isTest);
+                if (!isTest) {
+                    if (document.getElementById('minPrice').value === '0' || document.getElementById('minPrice').value === '') {
+                        document.getElementById('minPrice').value = '5';
+                    }
+                    if (document.getElementById('maxPrice').value === '0' || document.getElementById('maxPrice').value === '') {
+                        document.getElementById('maxPrice').value = '150';
+                    }
+                }
             }
 
             function addLabel() {
@@ -1211,6 +1219,16 @@ def serve_web_ui():
                 }
             }
 
+            function updateStartMode() {
+                const mode = document.querySelector('input[name="startMode"]:checked').value;
+                if (mode !== 'free') {
+                    const minEl = document.getElementById('startMinPrice');
+                    const maxEl = document.getElementById('startMaxPrice');
+                    if (!minEl.value || minEl.value === '0') minEl.value = '5';
+                    if (!maxEl.value || maxEl.value === '0') maxEl.value = '150';
+                }
+            }
+
             function openStartModal() {
                 // Pre-fill with current config if available
                 fetch('/api/start/config').then(r => r.json()).then(cfg => {
@@ -1220,7 +1238,10 @@ def serve_web_ui():
                         document.getElementById('startMaxPrice').value = cfg.max_price || 0;
                         document.getElementById('startInterval').value = cfg.scan_interval || 600;
                     }
-                }).catch(() => {});
+                    updateStartMode();
+                }).catch(() => {
+                    updateStartMode();
+                });
                 document.getElementById('startModal').classList.remove('hidden');
                 document.getElementById('startModal').classList.add('flex');
             }

@@ -28,6 +28,7 @@ class GitHubScout:
         text = f"{title} {body or ''}"
         patterns = [
             r'\[(\d+)\s*USD\]',
+            r'\$(\d+(?:\.\d+)?)\s*[kK]\b',
             r'\$(\d+)\b',
             r'(\d+)\s*USD\b',
             r'bounty[:\s]*\$(\d+)',
@@ -36,7 +37,10 @@ class GitHubScout:
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                return float(match.group(1))
+                val = float(match.group(1))
+                if 'k' in text[match.start():match.end()].lower():
+                    val *= 1000
+                return val
         return None
 
     def search_issues(
