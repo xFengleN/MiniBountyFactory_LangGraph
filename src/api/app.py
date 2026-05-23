@@ -385,6 +385,8 @@ def serve_web_ui():
                     </div>
                 </div>
 
+                <div id="toastContainer" class="fixed top-4 right-4 z-[200] flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
                 <div id="processingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
                     <div class="bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-lg mx-auto sm:mx-4 max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
                         <div class="flex justify-between items-center mb-4">
@@ -776,11 +778,11 @@ def serve_web_ui():
                         })
                     });
                     const data = await res.json();
-                    alert(`Found ${data.tasks_found} tasks (price: $${minPrice}-${maxPrice})`);
+                    customAlert(`Found ${data.tasks_found} tasks`);
                     loadTasks();
                     closeScanModal();
                 } catch (e) {
-                    alert('Scan failed: ' + e.message);
+                    customAlert('Scan failed: ' + e.message, 'error');
                 } finally {
                     btn.disabled = false;
                     btn.innerHTML = '<i class="fas fa-search mr-1"></i> Scan';
@@ -1185,6 +1187,23 @@ def serve_web_ui():
                 });
             }
 
+            function customAlert(message, type) {
+                if (!type) {
+                    type = message && (message.toLowerCase().includes('fail') || message.toLowerCase().includes('error')) ? 'error' : 'info';
+                }
+                const container = document.getElementById('toastContainer');
+                const el = document.createElement('div');
+                el.className = 'pointer-events-auto px-4 py-3 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 ' +
+                    (type === 'error' ? 'bg-red-700 text-white' : 'bg-gray-800 text-gray-100 border border-gray-600');
+                el.textContent = message;
+                container.appendChild(el);
+                setTimeout(() => {
+                    el.style.opacity = '0';
+                    el.style.transform = 'translateX(100%)';
+                    setTimeout(() => el.remove(), 300);
+                }, 4000);
+            }
+
             function customPrompt(message) {
                 return new Promise((resolve) => {
                     const modal = document.getElementById('promptModal');
@@ -1275,7 +1294,7 @@ def serve_web_ui():
                     closeStartModal();
                     refreshStatus();
                 } catch (e) {
-                    alert('Failed to start: ' + e.message);
+                    customAlert('Failed to start: ' + e.message);
                 }
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-play mr-1"></i> Start';
@@ -1396,13 +1415,13 @@ def serve_web_ui():
                     });
                     const result = await res.json();
                     if (result.success) {
-                        alert('Settings saved successfully. Some changes may require a restart.');
+                        customAlert('Settings saved successfully. Some changes may require a restart.');
                         closeSettings();
                     } else {
-                        alert('Failed to save: ' + (result.error || 'Unknown error'));
+                        customAlert('Failed to save: ' + (result.error || 'Unknown error'));
                     }
                 } catch (e) {
-                    alert('Failed to save settings: ' + e.message);
+                    customAlert('Failed to save settings: ' + e.message);
                 }
             }
 
@@ -1743,7 +1762,7 @@ def serve_web_ui():
                     await fetch('/api/reviews/' + reviewId + '/retry', { method: 'POST' });
                     loadRejectedReviews();
                     refreshAll();
-                } catch (e) { alert('Retry failed: ' + e.message); }
+                } catch (e) { customAlert('Retry failed: ' + e.message); }
             }
 
             async function deleteRejected(reviewId, taskId) {
@@ -1754,7 +1773,7 @@ def serve_web_ui():
                     await fetch('/api/reviews/' + reviewId + '/delete', { method: 'DELETE' });
                     loadRejectedReviews();
                     refreshAll();
-                } catch (e) { alert('Delete failed: ' + e.message); }
+                } catch (e) { customAlert('Delete failed: ' + e.message); }
             }
 
             async function retryAllRejected() {
@@ -1769,7 +1788,7 @@ def serve_web_ui():
                     }
                     loadRejectedReviews();
                     refreshAll();
-                } catch (e) { alert('Retry all failed: ' + e.message); }
+                } catch (e) { customAlert('Retry all failed: ' + e.message); }
             }
 
             async function deleteAllRejected() {
@@ -1783,7 +1802,7 @@ def serve_web_ui():
                     }
                     loadRejectedReviews();
                     refreshAll();
-                } catch (e) { alert('Delete all failed: ' + e.message); }
+                } catch (e) { customAlert('Delete all failed: ' + e.message); }
             }
 
             function showReviewDiff(id) {
@@ -1953,7 +1972,7 @@ def serve_web_ui():
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({path})
                 }).then(r => r.json()).then(d => {
-                    if (!d.success) alert('Failed to open: ' + d.error);
+                    if (!d.success) customAlert('Failed to open: ' + d.error);
                 });
             }
 
@@ -2125,11 +2144,11 @@ def serve_web_ui():
                         btn.innerHTML = '<i class="fas fa-check mr-1"></i> Sent!';
                         setTimeout(() => { hidePrecheckModal(); }, 1500);
                     } else {
-                        alert('Failed: ' + (data.error || 'Unknown error'));
+                        customAlert('Failed: ' + (data.error || 'Unknown error'));
                         btn.innerHTML = original;
                     }
                 } catch (e) {
-                    alert('Network error: ' + e.message);
+                    customAlert('Network error: ' + e.message);
                     btn.innerHTML = original;
                 }
                 btn.disabled = false;
@@ -2281,7 +2300,7 @@ def serve_web_ui():
                 if (!await customConfirm('Approve and create PR?')) return;
                 const res = await fetch('/api/reviews/' + id + '/approve', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}) });
                 const data = await res.json();
-                alert(data.pr_url ? 'PR Created: ' + data.pr_url : 'Approved!');
+                customAlert(data.pr_url ? 'PR Created: ' + data.pr_url : 'Approved!');
                 loadReviews(); refreshStatus();
             }
             async function rejectReview(id) { const c = await customPrompt('Reason for rejection:'); if (c === null || !c.trim()) return; await fetch('/api/reviews/' + id + '/reject', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({comments: c}) }); loadReviews(); }
@@ -2292,7 +2311,7 @@ def serve_web_ui():
                     await fetch('/api/reviews/' + reviewId + '/delete', { method: 'DELETE' });
                     loadReviews();
                     refreshAll();
-                } catch (e) { alert('Delete failed: ' + e.message); }
+                } catch (e) { customAlert('Delete failed: ' + e.message); }
             }
             async function startSystem() { openStartModal(); }
             async function stopSystem() { await fetch('/api/stop', {method: 'POST'}); refreshStatus(); }
@@ -2319,7 +2338,7 @@ def serve_web_ui():
                     body: JSON.stringify({ids})
                 });
                 const data = await res.json();
-                alert(`Deleted ${data.deleted} task(s)`);
+                customAlert(`Deleted ${data.deleted} task(s)`);
                 loadTasks();
             }
 
@@ -2332,10 +2351,10 @@ def serve_web_ui():
                         loadTasks();
                         showProcessingModal(id);
                     } else {
-                        alert('Retry failed: ' + (data.error || 'Unknown error'));
+                        customAlert('Retry failed: ' + (data.error || 'Unknown error'));
                     }
                 } catch (e) {
-                    alert('Retry failed: ' + e.message);
+                    customAlert('Retry failed: ' + e.message);
                 }
             }
 
@@ -2345,13 +2364,13 @@ def serve_web_ui():
                     const res = await fetch('/api/tasks/' + id + '/workspace', { method: 'DELETE' });
                     const data = await res.json();
                     if (data.success) {
-                        alert('Local files deleted');
+                        customAlert('Local files deleted');
                         loadTasks();
                     } else {
-                        alert('Failed: ' + (data.error || 'Unknown error'));
+                        customAlert('Failed: ' + (data.error || 'Unknown error'));
                     }
                 } catch (e) {
-                    alert('Failed: ' + e.message);
+                    customAlert('Failed: ' + e.message);
                 }
             }
 
@@ -2361,13 +2380,13 @@ def serve_web_ui():
                     const res = await fetch('/api/tasks/' + id + '/delete', { method: 'DELETE' });
                     const data = await res.json();
                     if (data.success) {
-                        alert('Task deleted');
+                        customAlert('Task deleted');
                         loadTasks();
                     } else {
-                        alert('Failed: ' + (data.error || 'Unknown error'));
+                        customAlert('Failed: ' + (data.error || 'Unknown error'));
                     }
                 } catch (e) {
-                    alert('Failed: ' + e.message);
+                    customAlert('Failed: ' + e.message);
                 }
             }
 
@@ -2375,7 +2394,7 @@ def serve_web_ui():
                 if (!await customConfirm('Delete all untouched (new/pending) tasks and their workspace files? This cannot be undone.')) return;
                 const res = await fetch('/api/tasks/clear-untouched', { method: 'POST' });
                 const data = await res.json();
-                alert(`Cleared ${data.deleted} task(s)`);
+                customAlert(`Cleared ${data.deleted} task(s)`);
                 loadTasks();
             }
 
@@ -2387,7 +2406,7 @@ def serve_web_ui():
                 };
                 const failedIds = window.allTasks.filter(isFailed).map(t => t.id);
                 if (failedIds.length === 0) {
-                    alert('No failed tasks to retry');
+                    customAlert('No failed tasks to retry');
                     return;
                 }
                 if (!await customConfirm(`Retry ${failedIds.length} failed task(s)?`)) return;
@@ -2401,7 +2420,7 @@ def serve_web_ui():
                         console.error('Retry failed for task', id, e);
                     }
                 }
-                alert(`Retried ${successCount} of ${failedIds.length} task(s)`);
+                customAlert(`Retried ${successCount} of ${failedIds.length} task(s)`);
                 loadTasks();
             }
 
@@ -2413,7 +2432,7 @@ def serve_web_ui():
                 };
                 const failedIds = window.allTasks.filter(isFailed).map(t => t.id);
                 if (failedIds.length === 0) {
-                    alert('No failed tasks to delete');
+                    customAlert('No failed tasks to delete');
                     return;
                 }
                 if (!await customConfirm(`Delete ${failedIds.length} failed task(s) and all their files? This cannot be undone.`)) return;
@@ -2427,7 +2446,7 @@ def serve_web_ui():
                         console.error('Delete failed for task', id, e);
                     }
                 }
-                alert(`Deleted ${successCount} of ${failedIds.length} task(s)`);
+                customAlert(`Deleted ${successCount} of ${failedIds.length} task(s)`);
                 loadTasks();
             }
 
@@ -2436,7 +2455,7 @@ def serve_web_ui():
                 try {
                     await fetch('/api/tasks/' + taskId + '/kill', { method: 'POST' });
                     refreshAll();
-                } catch (e) { alert('Kill failed: ' + e.message); }
+                } catch (e) { customAlert('Kill failed: ' + e.message); }
             }
 
             async function resetTask(taskId) {
@@ -2444,17 +2463,17 @@ def serve_web_ui():
                 try {
                     const res = await fetch('/api/tasks/' + taskId + '/reset', { method: 'POST' });
                     const data = await res.json();
-                    alert(data.message || 'Task reset');
+                    customAlert(data.message || 'Task reset');
                     loadTasks();
                 } catch (e) {
-                    alert('Reset failed: ' + e.message);
+                    customAlert('Reset failed: ' + e.message);
                 }
             }
 
             async function resetAllProcessing() {
                 const processing = window.allTasks.filter(t => t.processing_status === 'processing');
                 if (processing.length === 0) {
-                    alert('No processing tasks to reset');
+                    customAlert('No processing tasks to reset');
                     return;
                 }
                 if (!await customConfirm(`Reset ${processing.length} stuck task(s) back to "new"?`)) return;
@@ -2468,7 +2487,7 @@ def serve_web_ui():
                         console.error('Reset failed for task', t.id, e);
                     }
                 }
-                alert(`Reset ${count} of ${processing.length} task(s)`);
+                customAlert(`Reset ${count} of ${processing.length} task(s)`);
                 loadTasks();
             }
 
