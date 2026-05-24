@@ -2075,11 +2075,10 @@ def serve_web_ui():
                     algoraBox.classList.remove('hidden');
                     algoraEl.textContent = data.algora_bot_comment;
                     var wip = data.algora_wip_count || 0;
-                    var awardTotal = data.algora_award_total || 0;
                     var awardCount = data.algora_award_count || 0;
                     var summaryParts = [];
                     if (wip > 0) summaryParts.push('WIP: ' + wip);
-                    if (awardCount > 0) summaryParts.push('Awards: $' + awardTotal + ' (' + awardCount + ' entries)');
+                    if (awardCount > 0) summaryParts.push('Rewards: ' + awardCount);
                     algoraSummary.textContent = summaryParts.length > 0 ? '\u2014 ' + summaryParts.join(' | ') : '';
                 } else {
                     algoraBox.classList.add('hidden');
@@ -2164,7 +2163,7 @@ def serve_web_ui():
                     var awardTxt = (hasAlgora && awardCount !== undefined && awardCount !== null) ? String(awardCount) : 'not detected';
                     var d = document.createElement('div');
                     d.className = 'text-sm text-green-400 flex items-center gap-2 border-t border-gray-700 pt-2 mt-2 font-medium';
-                    d.innerHTML = '<i class="fab fa-algolia"></i> WIP count: ' + wipTxt + ', Awards: ' + awardTxt + ' <span id="planAttemptDebugToggle" class="text-xs text-gray-600 cursor-pointer hover:text-gray-400">[debug]</span>';
+                    d.innerHTML = '<i class="fab fa-algolia"></i> WIP: ' + wipTxt + ', Rewards: ' + awardTxt + ' <span id="planAttemptDebugToggle" class="text-xs text-gray-600 cursor-pointer hover:text-gray-400">[debug]</span>';
                     warningsContainer.appendChild(d);
                     document.getElementById('planAttemptDebugToggle').onclick = function() {
                         var x = document.getElementById('planAttemptDebugBot');
