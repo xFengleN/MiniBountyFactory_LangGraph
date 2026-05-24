@@ -2150,22 +2150,31 @@ def serve_web_ui():
                             warningsContainer.appendChild(div);
                         });
                     }
-                    var wip = data.algora_wip_count || 0;
-                    var awardTotal = data.algora_award_total || 0;
-                    var awardCount = data.algora_award_count || 0;
-                    if (wip > 0) {
-                        var div = document.createElement('div');
-                        div.className = 'text-sm text-cyan-400 flex items-center gap-2';
-                        div.innerHTML = '<i class="fas fa-hard-hat"></i> WIP entries: ' + wip;
-                        warningsContainer.appendChild(div);
+                    if (data.algora_bot_comment) {
+                        hasIssues = true;
+                        var wip = data.algora_wip_count || 0;
+                        var awardTotal = data.algora_award_total || 0;
+                        var awardCount = data.algora_award_count || 0;
+                        if (wip > 0) {
+                            var d = document.createElement('div');
+                            d.className = 'text-sm text-cyan-400 flex items-center gap-2';
+                            d.innerHTML = '<i class="fas fa-hard-hat"></i> WIP entries: ' + wip;
+                            warningsContainer.appendChild(d);
+                        }
+                        if (awardCount > 0) {
+                            var d = document.createElement('div');
+                            d.className = 'text-sm text-amber-400 flex items-center gap-2';
+                            d.innerHTML = '<i class="fas fa-trophy"></i> Awards: $' + awardTotal + ' (' + awardCount + ' entries)';
+                            warningsContainer.appendChild(d);
+                        }
+                        if (wip === 0 && awardCount === 0) {
+                            var d = document.createElement('div');
+                            d.className = 'text-sm text-gray-500 flex items-center gap-2';
+                            d.innerHTML = '<i class="fab fa-algolia"></i> Algora bot comment found — no WIP/Award table detected';
+                            warningsContainer.appendChild(d);
+                        }
                     }
-                    if (awardCount > 0) {
-                        var div = document.createElement('div');
-                        div.className = 'text-sm text-amber-400 flex items-center gap-2';
-                        div.innerHTML = '<i class="fas fa-trophy"></i> Awards: $' + awardTotal + ' (' + awardCount + ' entries)';
-                        warningsContainer.appendChild(div);
-                    }
-                    if (!hasIssues && (!data.warnings || data.warnings.length === 0) && wip === 0 && awardCount === 0) {
+                    if (!hasIssues && (!data.warnings || data.warnings.length === 0) && !data.algora_bot_comment) {
                         warningsContainer.innerHTML = '<div class="text-sm text-green-400"><i class="fas fa-check-circle mr-1"></i> Issue appears available \u2014 no conflicts detected</div>';
                     }
                 }

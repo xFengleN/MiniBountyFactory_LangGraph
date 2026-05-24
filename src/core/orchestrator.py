@@ -378,22 +378,31 @@ class BountyFactoryOrchestrator:
         award_count = 0
         for line in bot.split('\n'):
             stripped = line.strip()
-            if stripped.startswith('|') and stripped.endswith('|') and '---' not in stripped:
-                cells = [c.strip() for c in stripped.strip('|').split('|')]
-                if len(cells) >= 3:
-                    first = cells[0].lower()
-                    if first == 'yes':
-                        wip_count += 1
-                    for cell in cells:
-                        m = re.search(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', cell)
-                        if m:
-                            award_total += int(m.group(1).replace(',', ''))
-                            award_count += 1
-                            break
+            if not stripped.startswith('|') or not stripped.endswith('|'):
+                continue
+            if '---' in stripped:
+                continue
+            cells = [c.strip() for c in stripped.strip('|').split('|')]
+            if len(cells) < 3:
+                continue
+            skipped_header = any(h in cells[0].lower() for h in ('wip', '⚑', 'work'))
+            if skipped_header:
+                continue
+            cell_texts_lower = [c.lower() for c in cells]
+            is_wip = any(c == 'yes' for c in cell_texts_lower)
+            if is_wip:
+                wip_count += 1
+            for cell in cells:
+                m = re.search(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', cell)
+                if m:
+                    award_total += int(m.group(1).replace(',', ''))
+                    award_count += 1
+                    break
         precheck['algora_wip_count'] = wip_count
         precheck['algora_award_count'] = award_count
         precheck['algora_award_total'] = award_total
         precheck['generated_by'] = 'Bounty Factory — template-based planner (no LLM used for plan generation)'
+        logger.debug(f'Bounty {bounty_id}: parsed Algora bot comment — wip={wip_count}, awards={award_count}, total=${award_total}, bot_comment_len={len(bot)}')
         return precheck
 
     def submit_attempt_comment(self, bounty_id: int, body: str = '', execute: bool = False) -> Dict[str, Any]:
