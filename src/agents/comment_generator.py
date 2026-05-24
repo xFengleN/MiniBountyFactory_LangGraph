@@ -71,15 +71,11 @@ class CommentGenerator:
         parts.append("Implementation plan:")
         parts.append("")
 
-        desc_short = (description or '')[:500]
-        if desc_short:
-            parts.append(f"- Investigate the reported issue: {desc_short}")
-        else:
-            parts.append(f"- Reproduce the issue locally and trace the failure path")
-
-        parts.append(f"- Understand the existing codebase architecture and relevant components")
-        parts.append(f"- Implement a minimal fix aligned with existing conventions and coding style")
-        parts.append(f"- Add test coverage for the fix and validate against CI suite")
+        parts.append(f"1. Reproduce + confirm the gap.")
+        parts.append(f"2. Persist the resolved state into the message.")
+        parts.append(f"3. Harden the render path.")
+        parts.append(f"4. Edge cases.")
+        parts.append(f"5. Tests.")
         parts.append("")
 
         if check_result and check_result.get('contributing_rules'):
