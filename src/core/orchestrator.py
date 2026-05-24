@@ -372,20 +372,22 @@ class BountyFactoryOrchestrator:
             precheck['generated_comment'] = ''
         return precheck
 
-    def submit_attempt_comment(self, bounty_id: int, body: str, execute: bool = False) -> Dict[str, Any]:
+    def submit_attempt_comment(self, bounty_id: int, body: str = '', execute: bool = False) -> Dict[str, Any]:
         bounty = db.get_bounty_by_id(bounty_id)
         if not bounty:
             return {'success': False, 'error': 'Bounty not found'}
+        if execute:
+            db.update_bounty_status(bounty_id, 'processing')
+            db.log_processing(bounty_id, 'submit_attempt', 'Started execution (manual test, no comment posted)', 'processing')
+            return self.process_single_bounty(bounty_id)
         issue_url = bounty.get('issue_url', '')
         if not issue_url:
             return {'success': False, 'error': 'No issue URL'}
+        if not body:
+            return {'success': False, 'error': 'Comment body is required for Send'}
         comment_ok = self.github_checker.post_comment(issue_url, body)
         if not comment_ok:
             return {'success': False, 'error': 'Failed to post comment'}
-        if execute:
-            db.update_bounty_status(bounty_id, 'processing')
-            db.log_processing(bounty_id, 'submit_attempt', 'Posted comment + started execution', 'processing')
-            return self.process_single_bounty(bounty_id)
         db.update_bounty_status(bounty_id, 'awaiting_assignment')
         db.log_processing(bounty_id, 'submit_attempt', 'Posted /attempt comment, awaiting assignment', 'awaiting_assignment')
         return {'success': True, 'status': 'awaiting_assignment'}

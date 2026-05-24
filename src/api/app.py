@@ -2175,17 +2175,15 @@ def serve_web_ui():
                     }
                 };
                 document.getElementById('planAttemptExecuteBtn').onclick = async function() {
-                    const body = document.getElementById('planAttemptComment').value;
-                    if (!body.trim()) { customAlert('Comment cannot be empty'); return; }
-                    if (!await customConfirm('Post comment and start execution immediately (without waiting for maintainer assignment)?')) return;
+                    if (!await customConfirm('Start execution immediately without posting /attempt comment? (Manual test mode)')) return;
                     hidePlanAttemptModal();
                     if (task) task.processing_status = 'processing';
                     applyFilters();
                     showProcessingModal(taskId);
                     try {
-                        const res = await fetch('/api/tasks/' + taskId + '/submit-attempt', {
+                        await fetch('/api/tasks/' + taskId + '/submit-attempt', {
                             method: 'POST', headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({body: body, execute: true}),
+                            body: JSON.stringify({execute: true}),
                         });
                         loadTasks();
                     } catch (e) {
