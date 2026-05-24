@@ -2164,8 +2164,12 @@ def serve_web_ui():
                     var awardTxt = (hasAlgora && awardCount !== undefined && awardCount !== null) ? String(awardCount) : 'not detected';
                     var d = document.createElement('div');
                     d.className = 'text-sm text-green-400 flex items-center gap-2 border-t border-gray-700 pt-2 mt-2 font-medium';
-                    d.innerHTML = '<i class="fab fa-algolia"></i> WIP count: ' + wipTxt + ', Awards: ' + awardTxt + ' <span onclick="var x=document.getElementById(\'planAttemptDebugBot\');x.style.display=x.style.display===\'none\'?\'block\':\'none\'" class="text-xs text-gray-600 cursor-pointer hover:text-gray-400">[debug]</span>';
+                    d.innerHTML = '<i class="fab fa-algolia"></i> WIP count: ' + wipTxt + ', Awards: ' + awardTxt + ' <span id="planAttemptDebugToggle" class="text-xs text-gray-600 cursor-pointer hover:text-gray-400">[debug]</span>';
                     warningsContainer.appendChild(d);
+                    document.getElementById('planAttemptDebugToggle').onclick = function() {
+                        var x = document.getElementById('planAttemptDebugBot');
+                        x.style.display = (x.style.display === 'none') ? 'block' : 'none';
+                    };
                     var debugDiv = document.createElement('div');
                     debugDiv.id = 'planAttemptDebugBot';
                     debugDiv.className = 'text-xs text-gray-600 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto bg-gray-900 p-2 rounded hidden';
