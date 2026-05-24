@@ -2011,7 +2011,7 @@ def serve_web_ui():
             }
 
             async function planAttemptTask(id) {
-                if (!await customConfirm('Post /attempt comment on GitHub and wait for assignment?\n\nThis will auto-generate an implementation plan and post it to the issue.')) return;
+                if (!await customConfirm('Post /attempt comment on GitHub and wait for assignment?\\n\\nThis will auto-generate an implementation plan and post it to the issue.')) return;
                 try {
                     const res = await fetch('/api/tasks/' + id + '/plan-attempt', { method: 'POST' });
                     const data = await res.json();
@@ -2027,7 +2027,7 @@ def serve_web_ui():
             }
 
             async function executeTask(id) {
-                if (!await customConfirm('Execute coding phase?\n\nThis will clone the repo, generate a fix, run tests, and create a PR.')) return;
+                if (!await customConfirm('Execute coding phase?\\n\\nThis will clone the repo, generate a fix, run tests, and create a PR.')) return;
                 const task = window.allTasks.find(t => t.id === id);
                 if (task) task.processing_status = 'processing';
                 applyFilters();
