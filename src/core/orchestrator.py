@@ -376,33 +376,25 @@ class BountyFactoryOrchestrator:
         wip_count = 0
         award_total = 0
         award_count = 0
+        wip_markers = ['☑', '✅', 'yes', 'wip', 'in progress']
         for line in bot.split('\n'):
             stripped = line.strip()
-            if not stripped.startswith('|') or not stripped.endswith('|'):
-                continue
-            if '---' in stripped:
-                continue
-            cells = [c.strip() for c in stripped.strip('|').split('|')]
-            if len(cells) < 3:
-                continue
-            skipped_header = any(h in cells[0].lower() for h in ('wip', '⚑', 'work'))
-            if skipped_header:
-                continue
-            cell_texts_lower = [c.lower() for c in cells]
-            is_wip = any(c == 'yes' for c in cell_texts_lower)
-            if is_wip:
-                wip_count += 1
-            for cell in cells:
-                m = re.search(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', cell)
-                if m:
-                    award_total += int(m.group(1).replace(',', ''))
+            is_wip_line = any(m in stripped.lower() for m in wip_markers)
+            dollars = re.findall(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', stripped)
+            if dollars:
+                for d in dollars:
+                    award_total += int(d.replace(',', ''))
                     award_count += 1
-                    break
+                if is_wip_line:
+                    wip_count += 1
+            elif is_wip_line and '|' in stripped:
+                wip_count += 1
         precheck['algora_wip_count'] = wip_count
         precheck['algora_award_count'] = award_count
         precheck['algora_award_total'] = award_total
         precheck['generated_by'] = 'Bounty Factory — template-based planner (no LLM used for plan generation)'
-        logger.debug(f'Bounty {bounty_id}: parsed Algora bot comment — wip={wip_count}, awards={award_count}, total=${award_total}, bot_comment_len={len(bot)}')
+        precheck['_debug_raw_bot'] = bot[:2000]
+        logger.debug(f'Bounty {bounty_id}: Algora parser — wip={wip_count}, awards={award_count}, total=${award_total}')
         return precheck
 
     def submit_attempt_comment(self, bounty_id: int, body: str = '', execute: bool = False) -> Dict[str, Any]:
