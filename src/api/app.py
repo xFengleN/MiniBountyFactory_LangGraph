@@ -412,6 +412,42 @@ def serve_web_ui():
                     </div>
                 </div>
 
+                <div id="planAttemptModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+                    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold"><i class="fas fa-search mr-2"></i>Plan &amp; Attempt Preview</h3>
+                            <button onclick="hidePlanAttemptModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div id="planAttemptTaskInfo" class="text-sm text-gray-400 mb-3"></div>
+                        <div id="planAttemptAlgoraBox" class="mb-4 hidden">
+                            <details class="bg-gray-850 rounded border border-gray-700">
+                                <summary class="px-3 py-2 text-sm text-cyan-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fab fa-algolia mr-2"></i>Algora Bounty Info</summary>
+                                <div id="planAttemptAlgoraComment" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto"></div>
+                            </details>
+                        </div>
+                        <div id="planAttemptContributingBox" class="mb-4 hidden">
+                            <details class="bg-gray-850 rounded border border-gray-700">
+                                <summary class="px-3 py-2 text-sm text-purple-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-book mr-2"></i>Owner's Rules (CONTRIBUTING.md)</summary>
+                                <div id="planAttemptContributing" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto"></div>
+                            </details>
+                        </div>
+                        <div id="planAttemptWarnings" class="space-y-2 mb-4"></div>
+                        <div class="mb-4">
+                            <label class="block text-sm text-gray-400 mb-1"><i class="fas fa-comment mr-1"></i>Generated /attempt Comment</label>
+                            <textarea id="planAttemptComment" class="w-full h-32 bg-gray-900 text-gray-300 text-sm font-mono p-3 rounded resize-none"></textarea>
+                        </div>
+                        <div class="flex justify-end gap-3">
+                            <button onclick="hidePlanAttemptModal()" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button>
+                            <button id="planAttemptSendBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-medium">
+                                <i class="fas fa-paper-plane mr-1"></i> Send (/attempt)
+                            </button>
+                            <button id="planAttemptExecuteBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm font-medium">
+                                <i class="fas fa-play mr-1"></i> Process w/o Waiting
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="toastContainer" class="fixed top-4 right-4 z-[200] flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
 
                 <div id="processingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-3">
@@ -2011,19 +2047,158 @@ def serve_web_ui():
             }
 
             async function planAttemptTask(id) {
-                if (!await customConfirm('Post /attempt comment on GitHub and wait for assignment?\\n\\nThis will auto-generate an implementation plan and post it to the issue.')) return;
                 try {
-                    const res = await fetch('/api/tasks/' + id + '/plan-attempt', { method: 'POST' });
+                    const res = await fetch('/api/tasks/' + id + '/plan-attempt-preview');
                     const data = await res.json();
-                    if (data.success) {
-                        customAlert('/attempt posted! Waiting for maintainer assignment before execution.');
-                    } else {
-                        customAlert('Plan & Attempt failed: ' + (data.error || 'Unknown error'));
-                    }
-                    loadTasks();
+                    showPlanAttemptModal(id, data);
                 } catch (e) {
                     customAlert('Plan & Attempt error: ' + e.message);
                 }
+            }
+
+            function showPlanAttemptModal(taskId, data) {
+                const modal = document.getElementById('planAttemptModal');
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                const task = window.allTasks.find(t => t.id === taskId);
+                const infoEl = document.getElementById('planAttemptTaskInfo');
+                if (task) {
+                    infoEl.innerHTML = '<span class="px-2 py-0.5 rounded bg-gray-600 font-mono text-xs mr-2">#' + task.id + '</span><span class="mr-3">' + (task.repository_name || 'Unknown') + '</span>' + (task.price ? '<span class="text-amber-400">$' + task.price + '</span>' : '');
+                } else {
+                    infoEl.innerHTML = 'Task #' + taskId;
+                }
+                const algoraBox = document.getElementById('planAttemptAlgoraBox');
+                const algoraEl = document.getElementById('planAttemptAlgoraComment');
+                if (data.algora_bot_comment) {
+                    algoraBox.classList.remove('hidden');
+                    algoraEl.textContent = data.algora_bot_comment;
+                } else {
+                    algoraBox.classList.add('hidden');
+                }
+                const contribBox = document.getElementById('planAttemptContributingBox');
+                const contribEl = document.getElementById('planAttemptContributing');
+                if (data.contributing_rules) {
+                    contribBox.classList.remove('hidden');
+                    contribEl.textContent = data.contributing_rules;
+                } else {
+                    contribBox.classList.add('hidden');
+                }
+                const warningsContainer = document.getElementById('planAttemptWarnings');
+                warningsContainer.innerHTML = '';
+                if (data.error) {
+                    const div = document.createElement('div');
+                    div.className = 'text-sm text-red-400 flex items-center gap-2';
+                    div.innerHTML = '<i class="fas fa-times-circle"></i> Pre-check error: ' + data.error;
+                    warningsContainer.appendChild(div);
+                } else {
+                    let hasIssues = false;
+                    if (data.is_assigned && data.assignees && data.assignees.length > 0) {
+                        hasIssues = true;
+                        const div = document.createElement('div');
+                        div.className = 'text-sm text-red-400 flex items-center gap-2';
+                        div.innerHTML = '<i class="fas fa-user-lock"></i> Assigned to: ' + data.assignees.join(', ');
+                        warningsContainer.appendChild(div);
+                    }
+                    if (data.recent_claims && data.recent_claims.length > 0) {
+                        hasIssues = true;
+                        data.recent_claims.forEach(function(c) {
+                            const div = document.createElement('div');
+                            div.className = 'text-sm text-orange-400 flex items-center gap-2';
+                            div.innerHTML = '<i class="fas fa-hand-paper"></i> @' + c.user + ' claimed ' + c.time;
+                            warningsContainer.appendChild(div);
+                        });
+                    }
+                    if (data.algora_status === 'locked') {
+                        hasIssues = true;
+                        const div = document.createElement('div');
+                        div.className = 'text-sm text-red-400 flex items-center gap-2';
+                        div.innerHTML = '<i class="fas fa-lock"></i> Algora exclusive bounty assigned to @' + (data.algora_assignee || 'unknown');
+                        warningsContainer.appendChild(div);
+                    }
+                    if (data.winning_prs && data.winning_prs.length > 0) {
+                        hasIssues = true;
+                        data.winning_prs.forEach(function(p) {
+                            const div = document.createElement('div');
+                            div.className = 'text-sm text-red-400 flex items-center gap-2';
+                            div.innerHTML = '<i class="fas fa-code-branch"></i> PR #' + p.number + ' by @' + p.user + ' already passing CI';
+                            warningsContainer.appendChild(div);
+                        });
+                    }
+                    if (data.active_prs && data.active_prs.length > 0 && (!data.winning_prs || data.winning_prs.length === 0)) {
+                        hasIssues = true;
+                        data.active_prs.forEach(function(p) {
+                            const div = document.createElement('div');
+                            div.className = 'text-sm text-yellow-400 flex items-center gap-2';
+                            div.innerHTML = '<i class="fas fa-code-branch"></i> PR #' + p.number + ' by @' + p.user + ' \u2014 CI status: ' + (p.ci_passing ? 'passing' : 'pending/failing');
+                            warningsContainer.appendChild(div);
+                        });
+                    }
+                    if (data.warnings && data.warnings.length > 0) {
+                        data.warnings.forEach(function(w) {
+                            const div = document.createElement('div');
+                            div.className = 'text-sm text-yellow-400 flex items-center gap-2';
+                            div.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + w;
+                            warningsContainer.appendChild(div);
+                        });
+                    }
+                    if (!hasIssues && (!data.warnings || data.warnings.length === 0)) {
+                        warningsContainer.innerHTML = '<div class="text-sm text-green-400"><i class="fas fa-check-circle mr-1"></i> Issue appears available \u2014 no conflicts detected</div>';
+                    }
+                }
+                document.getElementById('planAttemptComment').value = data.generated_comment || '';
+                document.getElementById('planAttemptSendBtn').onclick = async function() {
+                    const body = document.getElementById('planAttemptComment').value;
+                    if (!body.trim()) { customAlert('Comment cannot be empty'); return; }
+                    if (!await customConfirm('Post this /attempt comment on GitHub and wait for maintainer assignment?')) return;
+                    const btn = document.getElementById('planAttemptSendBtn');
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending...';
+                    try {
+                        const res = await fetch('/api/tasks/' + taskId + '/submit-attempt', {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({body: body, execute: false}),
+                        });
+                        const result = await res.json();
+                        if (result.success) {
+                            customAlert('/attempt posted! Waiting for maintainer assignment before execution.');
+                            hidePlanAttemptModal();
+                            loadTasks();
+                        } else {
+                            customAlert('Failed: ' + (result.error || 'Unknown error'));
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> Send (/attempt)';
+                        }
+                    } catch (e) {
+                        customAlert('Error: ' + e.message);
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> Send (/attempt)';
+                    }
+                };
+                document.getElementById('planAttemptExecuteBtn').onclick = async function() {
+                    const body = document.getElementById('planAttemptComment').value;
+                    if (!body.trim()) { customAlert('Comment cannot be empty'); return; }
+                    if (!await customConfirm('Post comment and start execution immediately (without waiting for maintainer assignment)?')) return;
+                    hidePlanAttemptModal();
+                    if (task) task.processing_status = 'processing';
+                    applyFilters();
+                    showProcessingModal(taskId);
+                    try {
+                        const res = await fetch('/api/tasks/' + taskId + '/submit-attempt', {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({body: body, execute: true}),
+                        });
+                        loadTasks();
+                    } catch (e) {
+                        customAlert('Execute error: ' + e.message);
+                        loadTasks();
+                    }
+                };
+            }
+
+            function hidePlanAttemptModal() {
+                const modal = document.getElementById('planAttemptModal');
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
             }
 
             async function executeTask(id) {
@@ -3407,6 +3582,25 @@ def plan_attempt_task(task_id):
     if not orchestrator:
         return jsonify({'error': 'Orchestrator not initialized'}), 500
     result = orchestrator.plan_attempt(task_id)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/plan-attempt-preview', methods=['GET'])
+def plan_attempt_preview(task_id):
+    if not orchestrator:
+        return jsonify({'error': 'Orchestrator not initialized'}), 500
+    result = orchestrator.plan_attempt_preview(task_id)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/submit-attempt', methods=['POST'])
+def submit_attempt(task_id):
+    if not orchestrator:
+        return jsonify({'error': 'Orchestrator not initialized'}), 500
+    data = request.get_json() or {}
+    body = data.get('body', '')
+    execute = data.get('execute', False)
+    result = orchestrator.submit_attempt_comment(task_id, body, execute)
     return jsonify(result)
 
 

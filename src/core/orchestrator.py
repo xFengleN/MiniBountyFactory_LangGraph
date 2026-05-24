@@ -349,6 +349,47 @@ class BountyFactoryOrchestrator:
             db.update_bounty_status(bounty_id, 'new')
             return {'success': False, 'error': str(e)}
 
+    def plan_attempt_preview(self, bounty_id: int) -> Dict[str, Any]:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            return {'error': 'Bounty not found'}
+        precheck = self.pre_check_bounty(bounty_id)
+        issue_url = bounty.get('issue_url', '')
+        if issue_url:
+            check = self.github_checker.check_issue(issue_url)
+            if check.get('valid'):
+                precheck['generated_comment'] = self.comment_generator.generate_attempt_comment(
+                    issue_number=check['number'],
+                    title=bounty.get('title', ''),
+                    description=bounty.get('description', ''),
+                    repo_url=bounty.get('repository_url', ''),
+                    bot_comment=check.get('algora_bot_comment', ''),
+                    check_result=check,
+                )
+            else:
+                precheck['generated_comment'] = ''
+        else:
+            precheck['generated_comment'] = ''
+        return precheck
+
+    def submit_attempt_comment(self, bounty_id: int, body: str, execute: bool = False) -> Dict[str, Any]:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            return {'success': False, 'error': 'Bounty not found'}
+        issue_url = bounty.get('issue_url', '')
+        if not issue_url:
+            return {'success': False, 'error': 'No issue URL'}
+        comment_ok = self.github_checker.post_comment(issue_url, body)
+        if not comment_ok:
+            return {'success': False, 'error': 'Failed to post comment'}
+        if execute:
+            db.update_bounty_status(bounty_id, 'processing')
+            db.log_processing(bounty_id, 'submit_attempt', 'Posted comment + started execution', 'processing')
+            return self.process_single_bounty(bounty_id)
+        db.update_bounty_status(bounty_id, 'awaiting_assignment')
+        db.log_processing(bounty_id, 'submit_attempt', 'Posted /attempt comment, awaiting assignment', 'awaiting_assignment')
+        return {'success': True, 'status': 'awaiting_assignment'}
+
     def execute_bounty(self, bounty_id: int) -> Dict[str, Any]:
         return self.process_single_bounty(bounty_id)
 
