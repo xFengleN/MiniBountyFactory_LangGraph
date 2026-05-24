@@ -1,5 +1,6 @@
 import time
 import threading
+import re
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -370,6 +371,29 @@ class BountyFactoryOrchestrator:
                 precheck['generated_comment'] = ''
         else:
             precheck['generated_comment'] = ''
+
+        bot = precheck.get('algora_bot_comment', '') or ''
+        wip_count = 0
+        award_total = 0
+        award_count = 0
+        for line in bot.split('\n'):
+            stripped = line.strip()
+            if stripped.startswith('|') and stripped.endswith('|') and '---' not in stripped:
+                cells = [c.strip() for c in stripped.strip('|').split('|')]
+                if len(cells) >= 3:
+                    first = cells[0].lower()
+                    if first == 'yes':
+                        wip_count += 1
+                    for cell in cells:
+                        m = re.search(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', cell)
+                        if m:
+                            award_total += int(m.group(1).replace(',', ''))
+                            award_count += 1
+                            break
+        precheck['algora_wip_count'] = wip_count
+        precheck['algora_award_count'] = award_count
+        precheck['algora_award_total'] = award_total
+        precheck['generated_by'] = 'Bounty Factory — template-based planner (no LLM used for plan generation)'
         return precheck
 
     def submit_attempt_comment(self, bounty_id: int, body: str = '', execute: bool = False) -> Dict[str, Any]:
