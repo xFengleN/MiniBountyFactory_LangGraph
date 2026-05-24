@@ -71,11 +71,11 @@ class CommentGenerator:
         parts.append("Implementation plan:")
         parts.append("")
 
-        parts.append(f"1. Reproduce + confirm the gap.")
-        parts.append(f"2. Persist the resolved state into the message.")
-        parts.append(f"3. Harden the render path.")
-        parts.append(f"4. Edge cases.")
-        parts.append(f"5. Tests.")
+        parts.append(f"- Reproduce the issue locally and confirm the failure path")
+        parts.append(f"- Understand the relevant code paths and architecture")
+        parts.append(f"- Implement a robust fix covering error handling and edge cases")
+        parts.append(f"- Add test coverage and validate against CI suite")
+        parts.append(f"- Persist the resolved state and verify end-to-end")
         parts.append("")
 
         if check_result and check_result.get('contributing_rules'):
