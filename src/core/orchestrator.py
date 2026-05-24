@@ -389,20 +389,36 @@ class BountyFactoryOrchestrator:
         wip_count = 0
         award_total = 0
         award_count = 0
-        wip_markers = ['☑', '✅', 'yes', 'wip', 'in progress']
+        wip_markers = ['☑', '✅', '🟡', '⏳', 'yes', 'wip', 'in progress']
+
+        # Count $amounts from ALL lines for the monetary total
+        for d in re.findall(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', bot):
+            award_total += int(d.replace(',', ''))
+
+        # Parse table data rows for award/wip counts
         for line in bot.split('\n'):
             stripped = line.strip()
+            if not stripped.startswith('|') or not stripped.endswith('|'):
+                continue
             if re.match(r'^\|[\s\-:]+\|', stripped):
                 continue
-            is_wip_line = any(m in stripped.lower() for m in wip_markers)
-            dollars = re.findall(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', stripped)
-            if dollars:
-                for d in dollars:
-                    award_total += int(d.replace(',', ''))
-                    award_count += 1
-                if is_wip_line:
+            cells = [c.strip() for c in stripped.split('|') if c.strip()]
+            if len(cells) < 2:
+                continue
+            if cells[0].lower() in ('attempt', 'wip', 'issue', '#'):
+                continue
+
+            has_reward = 'Reward' in stripped and '/claims/' in stripped
+            has_wip = any(m in stripped.lower() for m in wip_markers)
+            has_dollar = '$' in stripped
+
+            if has_reward:
+                award_count += 1
+            elif has_dollar:
+                award_count += 1
+                if has_wip:
                     wip_count += 1
-            elif is_wip_line and '|' in stripped:
+            elif has_wip:
                 wip_count += 1
         precheck['algora_wip_count'] = wip_count
         precheck['algora_award_count'] = award_count
