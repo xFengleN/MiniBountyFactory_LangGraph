@@ -354,31 +354,46 @@ class BountyFactoryOrchestrator:
         bounty = db.get_bounty_by_id(bounty_id)
         if not bounty:
             return {'error': 'Bounty not found'}
-        precheck = self.pre_check_bounty(bounty_id)
         issue_url = bounty.get('issue_url', '')
-        if issue_url:
-            check = self.github_checker.check_issue(issue_url)
-            if check.get('valid'):
-                precheck['generated_comment'] = self.comment_generator.generate_attempt_comment(
-                    issue_number=check['number'],
-                    title=bounty.get('title', ''),
-                    description=bounty.get('description', ''),
-                    repo_url=bounty.get('repository_url', ''),
-                    bot_comment=check.get('algora_bot_comment', ''),
-                    check_result=check,
-                )
-            else:
-                precheck['generated_comment'] = ''
-        else:
-            precheck['generated_comment'] = ''
-
-        bot = precheck.get('algora_bot_comment', '') or ''
+        if not issue_url:
+            return {'error': 'No issue URL available'}
+        check = self.github_checker.check_issue(issue_url, force=True)
+        if not check.get('valid'):
+            return {'error': check.get('error', 'Failed to fetch issue')}
+        active_prs = check.get('active_prs', [])
+        winning_prs = [p for p in active_prs if p.get('ci_passing')]
+        precheck = {
+            'valid': check.get('valid', False),
+            'is_assigned': check.get('is_assigned', False),
+            'assignees': check.get('assignees', []),
+            'recent_claims': check.get('recent_claims', []),
+            'has_contributing': check.get('has_contributing', False),
+            'contributing_rules': check.get('contributing_rules', ''),
+            'algora_status': check.get('algora_status'),
+            'algora_assignee': check.get('algora_assignee'),
+            'algora_bot_comment': check.get('algora_bot_comment'),
+            'active_prs': active_prs,
+            'winning_prs': winning_prs,
+            'warnings': check.get('warnings', []),
+            'suggested_comment': self.comment_generator.generate_intent_comment(bounty, check),
+        }
+        precheck['generated_comment'] = self.comment_generator.generate_attempt_comment(
+            issue_number=check['number'],
+            title=bounty.get('title', ''),
+            description=bounty.get('description', ''),
+            repo_url=bounty.get('repository_url', ''),
+            bot_comment=check.get('algora_bot_comment', ''),
+            check_result=check,
+        )
+        bot = check.get('algora_bot_comment', '') or ''
         wip_count = 0
         award_total = 0
         award_count = 0
         wip_markers = ['☑', '✅', 'yes', 'wip', 'in progress']
         for line in bot.split('\n'):
             stripped = line.strip()
+            if re.match(r'^\|[\s\-:]+\|', stripped):
+                continue
             is_wip_line = any(m in stripped.lower() for m in wip_markers)
             dollars = re.findall(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', stripped)
             if dollars:

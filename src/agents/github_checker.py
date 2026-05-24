@@ -41,10 +41,16 @@ class GitHubIssueChecker:
     def _cache_set(self, key: str, val: Any):
         self._cache[key] = {'val': val, 'ts': time.time()}
 
-    def check_issue(self, issue_url: str) -> Dict[str, Any]:
+    def check_issue(self, issue_url: str, force: bool = False) -> Dict[str, Any]:
         owner, repo, number = self._parse_issue_url(issue_url)
         if not owner or not repo or not number:
             return {'valid': False, 'error': 'Invalid issue URL'}
+
+        if force:
+            issue_cache_key = f'issue:{owner}/{repo}#{number}'
+            comments_cache_key = f'comments:{owner}/{repo}#{number}'
+            self._cache.pop(issue_cache_key, None)
+            self._cache.pop(comments_cache_key, None)
 
         result = {
             'valid': True,
