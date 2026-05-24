@@ -56,6 +56,40 @@ class CommentGenerator:
 
         return '\n'.join(parts)
 
+    def generate_attempt_comment(
+        self,
+        issue_number: int,
+        title: str = '',
+        description: str = '',
+        repo_url: str = '',
+        bot_comment: str = '',
+        check_result: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        parts = []
+        parts.append(f"/attempt #{issue_number}")
+        parts.append("")
+        parts.append("Implementation plan:")
+        parts.append("")
+
+        desc_short = (description or '')[:500]
+        if desc_short:
+            parts.append(f"- Investigate the reported issue: {desc_short}")
+        else:
+            parts.append(f"- Reproduce the issue locally and trace the failure path")
+
+        parts.append(f"- Understand the existing codebase architecture and relevant components")
+        parts.append(f"- Implement a minimal fix aligned with existing conventions and coding style")
+        parts.append(f"- Add test coverage for the fix and validate against CI suite")
+        parts.append("")
+
+        if check_result and check_result.get('contributing_rules'):
+            parts.append(f"I've reviewed CONTRIBUTING.md and will follow the guidelines.")
+            parts.append("")
+
+        parts.append(f"I'll keep the implementation scoped to this issue. Happy to adjust based on feedback.")
+
+        return '\n'.join(parts)
+
     def generate_status_comment(self, status: str, bounty: Dict[str, Any]) -> str:
         title = bounty.get('title', '')
 

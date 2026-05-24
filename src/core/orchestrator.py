@@ -301,6 +301,57 @@ class BountyFactoryOrchestrator:
         db.log_processing(bounty_id, 'comment', 'Failed to post comment', 'error')
         return {'success': False, 'error': 'Failed to post comment to GitHub'}
 
+    def plan_attempt(self, bounty_id: int) -> Dict[str, Any]:
+        bounty = db.get_bounty_by_id(bounty_id)
+        if not bounty:
+            return {'success': False, 'error': 'Bounty not found'}
+
+        issue_url = bounty.get('issue_url', '')
+        if not issue_url:
+            return {'success': False, 'error': 'No issue URL'}
+
+        db.update_bounty_status(bounty_id, 'planning')
+        db.log_processing(bounty_id, 'plan_attempt', 'start', 'planning')
+
+        try:
+            check = self.github_checker.check_issue(issue_url)
+            if not check.get('valid'):
+                return {'success': False, 'error': check.get('error', 'Pre-check failed')}
+
+            number = check['number']
+            title = bounty.get('title', '')
+            description = bounty.get('description', '')
+            repo_url = bounty.get('repository_url', '')
+            bot = check.get('algora_bot_comment', '')
+
+            plan_comment = self.comment_generator.generate_attempt_comment(
+                issue_number=number, title=title, description=description,
+                repo_url=repo_url, bot_comment=bot,
+                check_result=check,
+            )
+            comment_ok = self.github_checker.post_comment(issue_url, plan_comment)
+
+            if not comment_ok:
+                db.update_bounty_status(bounty_id, 'new')
+                return {'success': False, 'error': 'Failed to post /attempt comment'}
+
+            db.update_bounty_status(bounty_id, 'awaiting_assignment')
+            db.log_processing(bounty_id, 'plan_attempt', f'Posted /attempt #{number}', 'awaiting_assignment')
+
+            return {
+                'success': True,
+                'issue_number': number,
+                'plan': plan_comment,
+                'status': 'awaiting_assignment',
+            }
+        except Exception as e:
+            logger.error(f"Plan attempt failed for bounty {bounty_id}: {e}")
+            db.update_bounty_status(bounty_id, 'new')
+            return {'success': False, 'error': str(e)}
+
+    def execute_bounty(self, bounty_id: int) -> Dict[str, Any]:
+        return self.process_single_bounty(bounty_id)
+
     def process_single_bounty(self, bounty_id: int) -> Dict[str, Any]:
         bounty = db.get_bounty_by_id(bounty_id)
         if not bounty:

@@ -156,6 +156,9 @@ def serve_web_ui():
                         <button onclick="switchTab('new')" id="tab-new" class="tab-active px-2 sm:px-4 py-3 font-medium whitespace-nowrap text-xs sm:text-sm">
                             <i class="fas fa-inbox mr-1 sm:mr-2"></i>New <span id="count-new" class="ml-1 text-xs bg-blue-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
+                        <button onclick="switchTab('awaiting_assignment')" id="tab-awaiting_assignment" class="px-2 sm:px-4 py-3 font-medium text-gray-400 whitespace-nowrap text-xs sm:text-sm">
+                            <i class="fas fa-clock mr-1 sm:mr-2"></i>Awaiting Assign <span id="count-awaiting_assignment" class="ml-1 text-xs bg-cyan-600 px-2 py-0.5 rounded-full">0</span>
+                        </button>
                         <button onclick="switchTab('processing')" id="tab-processing" class="px-2 sm:px-4 py-3 font-medium text-gray-400 whitespace-nowrap text-xs sm:text-sm">
                             <i class="fas fa-spinner mr-1 sm:mr-2"></i>Processing <span id="count-processing" class="ml-1 text-xs bg-yellow-600 px-2 py-0.5 rounded-full">0</span>
                         </button>
@@ -236,6 +239,15 @@ def serve_web_ui():
                         </div>
                         <div id="tasksList" class="space-y-3">
                             <div class="text-gray-400">Click "Scan Tasks" to find available tasks</div>
+                        </div>
+                    </div>
+
+                    <div id="panel-awaiting_assignment" class="p-4 hidden">
+                        <div class="flex items-end gap-2 mb-4 pb-3 border-b border-gray-700">
+                            <div class="text-sm text-cyan-400"><i class="fas fa-clock mr-1"></i> /attempt posted — waiting for maintainer assignment before execution</div>
+                        </div>
+                        <div id="awaitingAssignmentList" class="space-y-3">
+                            <div class="text-gray-400">No tasks awaiting assignment</div>
                         </div>
                     </div>
 
@@ -687,7 +699,7 @@ def serve_web_ui():
 
             function switchTab(tab) {
                 currentTab = tab;
-                const tabs = ['new', 'processing', 'failed', 'reviews', 'rejected', 'logs'];
+                const tabs = ['new', 'awaiting_assignment', 'processing', 'failed', 'reviews', 'rejected', 'logs'];
                 tabs.forEach(t => {
                     const tabEl = document.getElementById('tab-' + t);
                     const panelEl = document.getElementById('panel-' + t);
@@ -701,7 +713,7 @@ def serve_web_ui():
                 if (tab === 'reviews') loadReviews();
                 if (tab === 'rejected') loadRejectedReviews();
                 if (tab === 'logs') loadLogs();
-                if (['new', 'processing', 'failed'].includes(tab)) applyFilters();
+                if (['new', 'awaiting_assignment', 'processing', 'failed'].includes(tab)) applyFilters();
             }
 
             function closeScanModal() {
@@ -1462,6 +1474,7 @@ def serve_web_ui():
                 function taskGroup(t) {
                     const st = normalizeStatus(t.processing_status);
                     if (st === 'new') return 'new';
+                    if (st === 'awaiting_assignment') return 'awaiting_assignment';
                     if (st === 'processing') return 'processing';
                     if (isFailed(t)) return 'failed';
                     return 'other';
@@ -1478,7 +1491,7 @@ def serve_web_ui():
                     return true;
                 }
 
-                const groups = { new: [], processing: [], failed: [] };
+                const groups = { new: [], awaiting_assignment: [], processing: [], failed: [] };
                 window.allTasks.forEach(t => {
                     const g = taskGroup(t);
                     if (groups[g] && filterTask(t)) {
@@ -1509,16 +1522,19 @@ def serve_web_ui():
 
                 // Update counts
                 document.getElementById('count-new').textContent = groups.new.length;
+                document.getElementById('count-awaiting_assignment').textContent = (groups.awaiting_assignment || []).length;
                 document.getElementById('count-processing').textContent = groups.processing.length;
                 document.getElementById('count-failed').textContent = groups.failed.length;
 
                 // Render current tab
                 const isUntouched = (t) => ['new', 'pending'].includes(normalizeStatus(t.processing_status));
+                const isAwaitingAssignment = (t) => normalizeStatus(t.processing_status) === 'awaiting_assignment';
                 const isProcessing = (t) => normalizeStatus(t.processing_status) === 'processing';
 
                 function statusColor(s) {
                     const st = normalizeStatus(s);
                     if (st === 'new') return 'bg-blue-600';
+                    if (st === 'awaiting_assignment') return 'bg-cyan-600';
                     if (st === 'processing') return 'bg-yellow-600';
                     if (st === 'queued_for_review') return 'bg-purple-600';
                     if (st === 'failed' || st === 'validation_failed' || st === 'review_failed' || st === 'error') return 'bg-red-600';
@@ -1576,13 +1592,15 @@ def serve_web_ui():
                                 </div>
                             </div>
                             <div class="flex flex-wrap gap-2 sm:gap-2 sm:ml-2 shrink-0 sm:flex-nowrap">
-                                ${isUntouched(t) ? `<button onclick="processTask(${t.id})" class="bg-purple-600 hover:bg-purple-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-play mr-1"></i> Process</button>` : ''}
+                                ${isUntouched(t) ? `<button onclick="planAttemptTask(${t.id})" class="bg-blue-600 hover:bg-blue-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none" title="Recon + post /attempt comment, then wait for assignment"><i class="fas fa-search mr-1"></i> Plan & Attempt</button>` : ''}
+                                ${isAwaitingAssignment(t) ? `<button onclick="executeTask(${t.id})" class="bg-purple-600 hover:bg-purple-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-code mr-1"></i> Execute</button>` : ''}
+                                ${isAwaitingAssignment(t) ? `<button onclick="resetTask(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Reset to New"><i class="fas fa-undo"></i></button>` : ''}
                                 ${isProcessing(t) ? `<span class="inline-flex items-center gap-2 px-3 py-2 sm:py-1.5 rounded bg-yellow-600/50 text-yellow-300 text-sm font-mono"><i class="fas fa-spinner fa-spin"></i> <span id="elapsed_${t.id}" class="tabular-nums">${elapsed}</span></span>` : ''}
                                 ${isProcessing(t) ? `<button onclick="killTask(${t.id})" class="bg-red-700 hover:bg-red-600 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0 font-medium" title="Kill task immediately and release resources"><i class="fas fa-stop-circle mr-1"></i> Kill</button>` : ''}
                                 ${isProcessing(t) ? `<button onclick="resetTask(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Reset to New"><i class="fas fa-undo"></i></button>` : ''}
                                 ${isFailed(t) ? `<button onclick="retryTask(${t.id})" class="bg-blue-600 hover:bg-blue-700 px-3 py-2 sm:py-1.5 rounded text-sm font-medium min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"><i class="fas fa-redo mr-1"></i> Retry</button>` : ''}
                                 ${isFailed(t) ? `<button onclick="deleteFailedTask(${t.id})" class="bg-red-600 hover:bg-red-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Task"><i class="fas fa-trash mr-1"></i> Delete</button>` : ''}
-                                ${!isUntouched(t) && !isFailed(t) ? `<button onclick="deleteTaskWorkspace(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Local Files"><i class="fas fa-trash"></i></button>` : ''}
+                                ${!isUntouched(t) && !isAwaitingAssignment(t) && !isFailed(t) ? `<button onclick="deleteTaskWorkspace(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="Delete Local Files"><i class="fas fa-trash"></i></button>` : ''}
                                 <button onclick="viewTaskLogs(${t.id})" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0" title="View Logs"><i class="fas fa-terminal"></i></button>
                                 <a href="${t.issue_url}" target="_blank" class="bg-gray-600 hover:bg-gray-700 px-3 py-2 sm:py-1.5 rounded text-sm min-h-[44px] sm:min-h-0"><i class="fas fa-external-link"></i></a>
                             </div>
@@ -1620,6 +1638,7 @@ def serve_web_ui():
                 }
 
                 renderList('tasksList', groups.new, true);
+                renderList('awaitingAssignmentList', groups.awaiting_assignment || [], false);
                 renderList('processingList', groups.processing, false);
                 renderList('failedList', groups.failed, false);
 
@@ -1989,6 +2008,38 @@ def serve_web_ui():
                 }).then(r => r.json()).then(d => {
                     if (!d.success) customAlert('Failed to open: ' + d.error);
                 });
+            }
+
+            async function planAttemptTask(id) {
+                if (!await customConfirm('Post /attempt comment on GitHub and wait for assignment?\n\nThis will auto-generate an implementation plan and post it to the issue.')) return;
+                try {
+                    const res = await fetch('/api/tasks/' + id + '/plan-attempt', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.success) {
+                        customAlert('/attempt posted! Waiting for maintainer assignment before execution.');
+                    } else {
+                        customAlert('Plan & Attempt failed: ' + (data.error || 'Unknown error'));
+                    }
+                    loadTasks();
+                } catch (e) {
+                    customAlert('Plan & Attempt error: ' + e.message);
+                }
+            }
+
+            async function executeTask(id) {
+                if (!await customConfirm('Execute coding phase?\n\nThis will clone the repo, generate a fix, run tests, and create a PR.')) return;
+                const task = window.allTasks.find(t => t.id === id);
+                if (task) task.processing_status = 'processing';
+                applyFilters();
+                showProcessingModal(id);
+                try {
+                    const res = await fetch('/api/tasks/' + id + '/execute', { method: 'POST' });
+                    const data = await res.json();
+                    loadTasks();
+                } catch (e) {
+                    customAlert('Execute error: ' + e.message);
+                    loadTasks();
+                }
             }
 
             async function processTask(id) {
@@ -3348,6 +3399,22 @@ def precheck_task(task_id):
     if not orchestrator:
         return jsonify({'error': 'Orchestrator not initialized'}), 500
     result = orchestrator.pre_check_bounty(task_id)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/plan-attempt', methods=['POST'])
+def plan_attempt_task(task_id):
+    if not orchestrator:
+        return jsonify({'error': 'Orchestrator not initialized'}), 500
+    result = orchestrator.plan_attempt(task_id)
+    return jsonify(result)
+
+
+@app.route('/api/tasks/<int:task_id>/execute', methods=['POST'])
+def execute_task(task_id):
+    if not orchestrator:
+        return jsonify({'error': 'Orchestrator not initialized'}), 500
+    result = orchestrator.execute_bounty(task_id)
     return jsonify(result)
 
 
