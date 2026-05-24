@@ -13,6 +13,7 @@ from langchain_ollama import ChatOllama
 from ..core.config import config
 from ..utils.logger import get_logger
 from ..utils.ollama_client import extract_token_stats
+from ..utils.prompts import load_prompt
 
 logger = get_logger(__name__)
 
@@ -172,20 +173,16 @@ class SuperCoder:
         bounty: Dict[str, Any],
         subtask_id: int
     ) -> Optional[Dict[str, Any]]:
-        prompt = f"""You are a senior software engineer solving a complex subtask.
+        template = load_prompt('super_coder_local')
+        if template is None:
+            template = "You are a senior software engineer solving a complex subtask.\n\nSubtask {subtask_id}: {subtask_desc}\n\nOriginal issue: {title}\nDescription: {description}\n\nGuidelines:\n1. Make focused, correct changes\n2. Consider architecture and edge cases\n3. Follow existing codebase patterns\n4. Ensure type safety and proper error handling\n\nSolve this subtask."
 
-Subtask {subtask_id}: {subtask_desc}
-
-Original issue: {bounty.get('title', '')}
-Description: {bounty.get('description', '')[:500]}
-
-Guidelines:
-1. Make focused, correct changes
-2. Consider architecture and edge cases
-3. Follow existing codebase patterns
-4. Ensure type safety and proper error handling
-
-Solve this subtask."""
+        prompt = template.format(
+            subtask_id=subtask_id,
+            subtask_desc=subtask_desc,
+            title=bounty.get('title', ''),
+            description=(bounty.get('description', '') or '')[:500],
+        )
 
         try:
             self._ensure_local_llm()

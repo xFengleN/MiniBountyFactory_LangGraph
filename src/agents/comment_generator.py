@@ -1,3 +1,4 @@
+import re
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -39,6 +40,17 @@ class CommentGenerator:
             parts.append(f"⚠️ I see @{claim['user']} picked this up {claim['time']}.")
             parts.append(f"If it's still up for grabs, I'll get started.")
             parts.append("")
+
+        bot_comment = check_result.get('algora_bot_comment') if check_result else None
+        if bot_comment:
+            attempt_match = re.search(r'/attempt\s+#\d+', bot_comment)
+            if attempt_match:
+                parts.append(f"I'll start by commenting `{attempt_match.group()}` with my implementation plan as noted in the bounty.")
+                parts.append("")
+            claim_match = re.search(r'/claim\s+#\d+', bot_comment)
+            if claim_match:
+                parts.append(f"I'll include `{claim_match.group()}` in the PR body to claim the bounty upon submission.")
+                parts.append("")
 
         parts.append(f"Will open a PR once I've got something solid. Happy to adjust if there's a particular direction you'd prefer.")
 

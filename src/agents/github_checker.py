@@ -1,20 +1,28 @@
 import os
 import re
-from typing import Dict, Any, Optional, List
+import time
+from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timedelta
 
 import requests
 
 from ..core.config import config
 from ..utils.logger import get_logger
+from ..utils.http import retry
 
 logger = get_logger(__name__)
+
+
+def _rate_limited(method: Callable) -> Callable:
+    return retry(max_retries=3, base_delay=2.0, backoff=2.0)(method)
 
 
 class GitHubIssueChecker:
     def __init__(self, token: str = None):
         self.token = token or os.getenv('GITHUB_TOKEN')
         self.base_url = 'https://api.github.com'
+        self._cache: Dict[str, Any] = {}
+        self._cache_ttl: float = 60.0
 
         if self.token and self.token != 'YOUR_GITHUB_TOKEN':
             self.headers = {
@@ -23,6 +31,15 @@ class GitHubIssueChecker:
             }
         else:
             self.headers = {'Accept': 'application/vnd.github.v3+json'}
+
+    def _cache_get(self, key: str) -> Optional[Any]:
+        entry = self._cache.get(key)
+        if entry and time.time() - entry['ts'] < self._cache_ttl:
+            return entry['val']
+        return None
+
+    def _cache_set(self, key: str, val: Any):
+        self._cache[key] = {'val': val, 'ts': time.time()}
 
     def check_issue(self, issue_url: str) -> Dict[str, Any]:
         owner, repo, number = self._parse_issue_url(issue_url)
@@ -41,6 +58,7 @@ class GitHubIssueChecker:
             'contributing_rules': '',
             'algora_status': None,
             'algora_assignee': None,
+            'algora_bot_comment': None,
             'active_prs': [],
             'warnings': [],
         }
@@ -75,7 +93,13 @@ class GitHubIssueChecker:
                 f'Algora exclusive bounty assigned to @{algora_status["assignee"]}'
             )
 
+        bot_comment = next((c for c in comments if c.get('user', {}).get('login') == 'algora-pbc[bot]'), None)
+        if bot_comment:
+            result['algora_bot_comment'] = bot_comment.get('body', '')
+
         active_prs = self._check_existing_prs(owner, repo, number)
+        if not active_prs:
+            active_prs = self._find_prs_in_comments(comments)
         result['active_prs'] = active_prs
         if active_prs:
             pr_summary = ', '.join(
@@ -98,30 +122,42 @@ class GitHubIssueChecker:
             return match.group(1), match.group(2), int(match.group(3))
         return None, None, None
 
+    @_rate_limited
+    def _do_get(self, url: str, **kwargs) -> Optional[requests.Response]:
+        return requests.get(url, headers=self.headers, timeout=15, **kwargs)
+
     def _fetch_issue(self, owner: str, repo: str, number: int) -> Optional[Dict]:
+        cache_key = f'issue:{owner}/{repo}#{number}'
+        cached = self._cache_get(cache_key)
+        if cached:
+            return cached
         try:
-            resp = requests.get(
-                f'{self.base_url}/repos/{owner}/{repo}/issues/{number}',
-                headers=self.headers,
-                timeout=15
+            resp = self._do_get(
+                f'{self.base_url}/repos/{owner}/{repo}/issues/{number}'
             )
-            if resp.status_code == 200:
-                return resp.json()
-            logger.warning(f'Issue fetch failed: {resp.status_code}')
+            if resp and resp.status_code == 200:
+                data = resp.json()
+                self._cache_set(cache_key, data)
+                return data
+            logger.warning(f'Issue fetch failed: {resp.status_code if resp else "N/A"}')
         except Exception as e:
             logger.error(f'Issue fetch error: {e}')
         return None
 
     def _fetch_comments(self, owner: str, repo: str, number: int) -> List[Dict]:
+        cache_key = f'comments:{owner}/{repo}#{number}'
+        cached = self._cache_get(cache_key)
+        if cached:
+            return cached
         try:
-            resp = requests.get(
+            resp = self._do_get(
                 f'{self.base_url}/repos/{owner}/{repo}/issues/{number}/comments',
-                headers=self.headers,
-                params={'per_page': 20, 'sort': 'created', 'direction': 'desc'},
-                timeout=15
+                params={'per_page': 20, 'sort': 'created', 'direction': 'desc'}
             )
-            if resp.status_code == 200:
-                return resp.json()
+            if resp and resp.status_code == 200:
+                data = resp.json()
+                self._cache_set(cache_key, data)
+                return data
         except Exception as e:
             logger.error(f'Comments fetch error: {e}')
         return []
@@ -142,15 +178,20 @@ class GitHubIssueChecker:
         ]
         pattern = re.compile('|'.join(claim_patterns), re.IGNORECASE)
 
+        bot_users = {'algora-pbc[bot]', 'github-actions[bot]', 'github-actions'}
+
         claims = []
         now = datetime.utcnow()
         for comment in comments:
+            user = comment.get('user', {}).get('login', '')
+            if user in bot_users:
+                continue
             body = comment.get('body', '')
             if pattern.search(body):
                 created = datetime.fromisoformat(comment.get('created_at', '').replace('Z', '+00:00')).replace(tzinfo=None)
                 hours_ago = (now - created).total_seconds() / 3600
                 claims.append({
-                    'user': comment.get('user', {}).get('login', 'unknown'),
+                    'user': user,
                     'time': f'{int(hours_ago)}h ago',
                     'body': body[:100],
                 })
@@ -190,26 +231,30 @@ class GitHubIssueChecker:
         return {'status': 'open', 'assignee': None}
 
     def _check_existing_prs(self, owner: str, repo: str, issue_number: int) -> List[Dict]:
+        cache_key = f'prs:{owner}/{repo}'
+        cached = self._cache_get(cache_key)
         try:
-            resp = requests.get(
-                f'{self.base_url}/repos/{owner}/{repo}/pulls',
-                headers=self.headers,
-                params={
-                    'state': 'open',
-                    'sort': 'updated',
-                    'direction': 'desc',
-                    'per_page': 10,
-                },
-                timeout=15
-            )
-            if resp.status_code != 200:
-                return []
+            if not cached:
+                resp = self._do_get(
+                    f'{self.base_url}/repos/{owner}/{repo}/pulls',
+                    params={
+                        'state': 'open',
+                        'sort': 'updated',
+                        'direction': 'desc',
+                        'per_page': 100,
+                    }
+                )
+                if not resp or resp.status_code != 200:
+                    return []
+                cached = resp.json()
+                self._cache_set(cache_key, cached)
 
-            prs = resp.json()
+            issue_ref = f'#{issue_number}'
             linked = []
-            for pr in prs:
+            for pr in cached:
                 body = pr.get('body', '') or ''
-                if f'#{issue_number}' in body:
+                title = pr.get('title', '') or ''
+                if issue_ref in body or issue_ref in title:
                     linked.append({
                         'number': pr['number'],
                         'title': pr.get('title', ''),
@@ -225,30 +270,51 @@ class GitHubIssueChecker:
             return []
 
     def _check_pr_checks(self, owner: str, repo: str, pr_number: int) -> bool:
+        cache_key = f'prchecks:{owner}/{repo}#{pr_number}'
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
         try:
-            resp = requests.get(
-                f'{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}',
-                headers=self.headers,
-                timeout=10
+            resp = self._do_get(
+                f'{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}'
             )
-            if resp.status_code != 200:
+            if not resp or resp.status_code != 200:
                 return False
             pr_data = resp.json()
             head_sha = pr_data.get('head', {}).get('sha')
             if not head_sha:
                 return False
 
-            status_resp = requests.get(
-                f'{self.base_url}/repos/{owner}/{repo}/commits/{head_sha}/status',
-                headers=self.headers,
-                timeout=10
+            status_resp = self._do_get(
+                f'{self.base_url}/repos/{owner}/{repo}/commits/{head_sha}/status'
             )
-            if status_resp.status_code == 200:
+            if status_resp and status_resp.status_code == 200:
                 state = status_resp.json().get('state', '')
                 return state == 'success'
         except Exception as e:
             logger.error(f'PR checks error for {owner}/{repo}#{pr_number}: {e}')
         return False
+
+    def _find_prs_in_comments(self, comments: List[Dict]) -> List[Dict]:
+        pr_pattern = re.compile(r'(?:PR|pull request|#)\s*(\d+)', re.IGNORECASE)
+        seen = set()
+        found = []
+        for comment in comments:
+            body = comment.get('body', '')
+            for match in pr_pattern.finditer(body):
+                pr_num = int(match.group(1))
+                if pr_num not in seen and pr_num < 100000:
+                    seen.add(pr_num)
+                    found.append({
+                        'number': pr_num,
+                        'title': f'Referenced in comment by {comment.get("user", {}).get("login", "?")}',
+                        'state': 'mentioned',
+                        'draft': False,
+                        'user': comment.get('user', {}).get('login', ''),
+                        'created_at': comment.get('created_at', ''),
+                        'ci_passing': False,
+                    })
+        return found
 
     def post_comment(self, issue_url: str, body: str) -> bool:
         owner, repo, number = self._parse_issue_url(issue_url)
@@ -271,15 +337,17 @@ class GitHubIssueChecker:
             logger.error(f'Post comment error: {e}')
             return False
 
+    @_rate_limited
+    def _fetch_contributing_raw(self, url: str) -> Optional[requests.Response]:
+        return requests.get(url, headers=self.headers, timeout=15)
+
     def _fetch_contributing(self, owner: str, repo: str) -> Optional[str]:
         for path in ['CONTRIBUTING.md', 'contributing.md', '.github/CONTRIBUTING.md']:
             try:
-                resp = requests.get(
-                    f'{self.base_url}/repos/{owner}/{repo}/contents/{path}',
-                    headers=self.headers,
-                    timeout=15
+                resp = self._fetch_contributing_raw(
+                    f'{self.base_url}/repos/{owner}/{repo}/contents/{path}'
                 )
-                if resp.status_code == 200:
+                if resp and resp.status_code == 200:
                     data = resp.json()
                     import base64
                     content = base64.b64decode(data.get('content', '')).decode('utf-8')

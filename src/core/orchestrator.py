@@ -280,6 +280,7 @@ class BountyFactoryOrchestrator:
             'contributing_rules': check_result.get('contributing_rules', ''),
             'algora_status': algora_status,
             'algora_assignee': check_result.get('algora_assignee'),
+            'algora_bot_comment': check_result.get('algora_bot_comment'),
             'active_prs': active_prs,
             'winning_prs': winning_prs,
             'warnings': check_result.get('warnings', []),
@@ -359,6 +360,15 @@ class BountyFactoryOrchestrator:
                     issues = [i for i in issues if not i.get('is_bounty') and not i.get('price')]
                     if before != len(issues):
                         logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
+
+                if min_price > 0 or max_price > 0:
+                    before = len(issues)
+                    def in_range(i):
+                        p = i.get('price')
+                        return p is None or (min_price <= p <= max_price)
+                    issues = [i for i in issues if in_range(i)]
+                    if before != len(issues):
+                        logger.info("price filter $%s-$%s: filtered %d issues (kept %d)", min_price, max_price, before - len(issues), len(issues))
 
                 count = self.github_scout.store_issues(issues)
         else:

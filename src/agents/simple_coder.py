@@ -11,6 +11,7 @@ from langchain_ollama import ChatOllama
 from ..core.config import config
 from ..utils.logger import get_logger
 from ..utils.ollama_client import extract_token_stats
+from ..utils.prompts import load_prompt
 
 logger = get_logger(__name__)
 
@@ -174,26 +175,14 @@ class SimpleCoder:
         if subtask_description:
             scope = f"\nYou are solving a specific subtask:\nSubtask: {subtask_description}\n"
 
-        prompt = f"""You are a code generation assistant. Fix bugs or implement small features based on issue descriptions.
+        template = load_prompt('simple_coder')
+        if template is None:
+            template = "You are a code generation assistant. Fix bugs or implement small features based on issue descriptions.\n\nGuidelines:\n1. Only modify necessary files\n2. Make minimal, focused changes\n3. Follow existing code style\n4. Ensure the fix compiles/runs correctly\n5. Do NOT add unnecessary features or refactor unrelated code\n\nIssue Title: {title}\n\nIssue Description:\n{description}\n\nIssue URL: {issue_url}\n{scope}\nRepository Files (sample):\n{files_info}\n\nGenerate the fix for this issue."
 
-Guidelines:
-1. Only modify necessary files
-2. Make minimal, focused changes
-3. Follow existing code style
-4. Ensure the fix compiles/runs correctly
-5. Do NOT add unnecessary features or refactor unrelated code
-
-Issue Title: {title}
-
-Issue Description:
-{description}
-
-Issue URL: {issue_url}
-{scope}
-Repository Files (sample):
-{files_info}
-
-Generate the fix for this issue."""
+        prompt = template.format(
+            title=title, description=description or '',
+            issue_url=issue_url, scope=scope, files_info=files_info,
+        )
 
         try:
             self._ensure_llm()

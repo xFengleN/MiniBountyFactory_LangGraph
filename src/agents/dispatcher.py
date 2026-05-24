@@ -6,6 +6,7 @@ from langchain_ollama import ChatOllama
 from ..core.config import config
 from ..utils.logger import get_logger
 from ..utils.ollama_client import extract_token_stats
+from ..utils.prompts import load_prompt
 
 logger = get_logger(__name__)
 
@@ -60,23 +61,12 @@ class Dispatcher:
         description = bounty.get('description', '')
         repo_url = bounty.get('repository_url', '')
 
-        prompt = f"""You are a dispatcher. Analyze the task and decide how to route it.
+        template = load_prompt('dispatcher')
+        if template is None:
+            template = "You are a dispatcher. Analyze the task and decide how to route it.\n\nGuidelines:\n1. Determine if the task is SIMPLE or COMPLEX\n2. SIMPLE tasks: one-off file changes, boilerplate, bug fixes, dependency updates, config changes. Set mode=\"delegate\".\n3. COMPLEX tasks: multi-file architecture, cross-cutting concerns, new features, algorithmic work. Set mode=\"decompose\".\n4. For COMPLEX tasks, break into subtasks assigned to 'simple_coder' or 'super_coder':\n   - simple_coder: focused file edits, unit tests, refactoring, scripts\n   - super_coder: architectural changes, multi-file coordination, complex algorithms, performance work\n5. Each subtask should be independently solvable. Identify dependencies.\n\nTask:\nTitle: {title}\nDescription: {description}\nRepository: {repo_url}\n\nOutput your decision."
 
-Guidelines:
-1. Determine if the task is SIMPLE or COMPLEX
-2. SIMPLE tasks: one-off file changes, boilerplate, bug fixes, dependency updates, config changes. Set mode="delegate".
-3. COMPLEX tasks: multi-file architecture, cross-cutting concerns, new features, algorithmic work. Set mode="decompose".
-4. For COMPLEX tasks, break into subtasks assigned to 'simple_coder' or 'super_coder':
-   - simple_coder: focused file edits, unit tests, refactoring, scripts
-   - super_coder: architectural changes, multi-file coordination, complex algorithms, performance work
-5. Each subtask should be independently solvable. Identify dependencies.
-
-Task:
-Title: {title}
-Description: {description[:2000]}
-Repository: {repo_url}
-
-Output your decision."""
+        desc_short = (description or '')[:2000]
+        prompt = template.format(title=title, description=desc_short, repo_url=repo_url)
 
         try:
             self._ensure_llm()

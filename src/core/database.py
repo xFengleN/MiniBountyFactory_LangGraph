@@ -10,6 +10,66 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+MIGRATIONS = [
+    # (version, description, sql)
+    (1, 'Initial schema', """
+        CREATE TABLE IF NOT EXISTS bounties (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            external_id TEXT UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT,
+            price REAL,
+            currency TEXT DEFAULT 'USD',
+            difficulty TEXT,
+            repository_url TEXT,
+            repository_name TEXT,
+            issue_url TEXT,
+            tags TEXT,
+            is_bounty INTEGER DEFAULT 0,
+            created_at TIMESTAMP,
+            fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'new',
+            classification TEXT,
+            confidence REAL,
+            assigned_agent TEXT,
+            processing_status TEXT DEFAULT 'new'
+        );
+        CREATE TABLE IF NOT EXISTS review_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bounty_id INTEGER NOT NULL,
+            branch_name TEXT,
+            commit_sha TEXT,
+            diff_content TEXT,
+            agent_type TEXT,
+            confidence_score REAL,
+            review_notes TEXT,
+            validation_passed INTEGER DEFAULT 0,
+            test_output TEXT,
+            workspace_path TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TIMESTAMP,
+            status TEXT DEFAULT 'pending',
+            review_action TEXT,
+            reviewer_comments TEXT,
+            pr_url TEXT,
+            FOREIGN KEY (bounty_id) REFERENCES bounties(id)
+        );
+        CREATE TABLE IF NOT EXISTS processing_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bounty_id INTEGER,
+            agent_type TEXT,
+            action TEXT,
+            status TEXT,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status);
+        CREATE INDEX IF NOT EXISTS idx_bounties_external_id ON bounties(external_id);
+        CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue(status);
+    """),
+]
+
+
 class Database:
     _instance: Optional['Database'] = None
 
@@ -27,7 +87,26 @@ class Database:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
         self._initialized = True
-        self.init_schema()
+        self._run_migrations()
+
+    def _run_migrations(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS _migrations (
+                    version INTEGER PRIMARY KEY,
+                    description TEXT,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            applied = {row['version'] for row in cursor.execute("SELECT version FROM _migrations").fetchall()}
+            for version, desc, sql in MIGRATIONS:
+                if version not in applied:
+                    logger.info(f"Running migration v{version}: {desc}")
+                    cursor.executescript(sql)
+                    cursor.execute("INSERT INTO _migrations (version, description) VALUES (?, ?)", (version, desc))
+                    conn.commit()
+                    logger.info(f"Migration v{version} complete")
 
     @contextmanager
     def get_connection(self):
@@ -42,101 +121,7 @@ class Database:
         finally:
             conn.close()
 
-    def init_schema(self):
-        with self.get_connection() as conn:
-            conn = conn.cursor()
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS bounties (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    external_id TEXT UNIQUE,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    price REAL,
-                    currency TEXT DEFAULT 'USD',
-                    difficulty TEXT,
-                    repository_url TEXT,
-                    repository_name TEXT,
-                    issue_url TEXT,
-                    tags TEXT,
-                    is_bounty INTEGER DEFAULT 0,
-                    created_at TIMESTAMP,
-                    fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status TEXT DEFAULT 'new',
-                    classification TEXT,
-                    confidence REAL,
-                    assigned_agent TEXT,
-                    processing_status TEXT DEFAULT 'new'
-                )
-            """)
-
-            try:
-                conn.execute("""
-                    ALTER TABLE bounties ADD COLUMN is_bounty INTEGER DEFAULT 0
-                """)
-            except Exception:
-                pass
-
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS review_queue (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    bounty_id INTEGER NOT NULL,
-                    branch_name TEXT,
-                    commit_sha TEXT,
-                    diff_content TEXT,
-                    agent_type TEXT,
-                    confidence_score REAL,
-                    review_notes TEXT,
-                    validation_passed INTEGER DEFAULT 0,
-                    test_output TEXT,
-                    workspace_path TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    reviewed_at TIMESTAMP,
-                    status TEXT DEFAULT 'pending',
-                    review_action TEXT,
-                    reviewer_comments TEXT,
-                    pr_url TEXT,
-                    FOREIGN KEY (bounty_id) REFERENCES bounties(id)
-                )
-            """)
-
-            try:
-                conn.execute("""ALTER TABLE review_queue ADD COLUMN validation_passed INTEGER DEFAULT 0""")
-            except Exception:
-                pass
-            try:
-                conn.execute("""ALTER TABLE review_queue ADD COLUMN test_output TEXT""")
-            except Exception:
-                pass
-            try:
-                conn.execute("""ALTER TABLE review_queue ADD COLUMN workspace_path TEXT""")
-            except Exception:
-                pass
-
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS processing_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    bounty_id INTEGER,
-                    agent_type TEXT,
-                    action TEXT,
-                    status TEXT,
-                    details TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_bounties_status
-                ON bounties(status)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_bounties_external_id
-                ON bounties(external_id)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_review_queue_status
-                ON review_queue(status)
-            """)
 
     def cleanup_stale_tasks(self, days: int = 30) -> int:
         with self.get_connection() as conn:

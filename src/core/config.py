@@ -93,5 +93,9 @@ class Config:
     def logging(self) -> Dict[str, Any]:
         return self._config.get('logging', {})
 
+    @property
+    def algora(self) -> Dict[str, Any]:
+        return self._config.get('algora', {})
+
 
 config = Config()

@@ -6,6 +6,7 @@ from datetime import datetime
 import requests
 from ..core.database import db
 from ..utils.logger import get_logger
+from ..utils.http import retry
 
 logger = get_logger(__name__)
 
@@ -23,6 +24,15 @@ class GitHubScout:
                 'Accept': 'application/vnd.github.v3+json',
                 'Authorization': f'token {self.token}'
             }
+
+    @retry(max_retries=3, base_delay=2.0, backoff=2.0)
+    def _search_github(self, **params) -> Optional[requests.Response]:
+        return requests.get(
+            f'{self.base_url}/search/issues',
+            headers=self.headers,
+            params=params,
+            timeout=30
+        )
 
     def _extract_price(self, title: str, body: str) -> Optional[float]:
         text = f"{title} {body or ''}"
@@ -52,20 +62,15 @@ class GitHubScout:
             query = 'label:"good first issue" label:bug state:open'
 
         try:
-            response = requests.get(
-                f'{self.base_url}/search/issues',
-                headers=self.headers,
-                params={
-                    'q': query,
-                    'per_page': min(limit, 100),
-                    'sort': 'created',
-                    'order': 'desc'
-                },
-                timeout=30
+            response = self._search_github(
+                q=query,
+                per_page=min(limit, 100),
+                sort='created',
+                order='desc'
             )
 
-            if response.status_code != 200:
-                logger.error(f"GitHub API error: {response.status_code} - {response.text[:200]}")
+            if response is None or response.status_code != 200:
+                logger.error(f"GitHub API error: {response.status_code if response else 'N/A'}")
                 return []
 
             data = response.json()
@@ -114,12 +119,13 @@ class GitHubScout:
 
         for issue in issues:
             try:
-                db.add_bounty(issue)
-                count += 1
+                rowid = db.add_bounty(issue)
+                if rowid:
+                    count += 1
             except Exception as e:
                 logger.error(f"Failed to store GitHub issue: {e}")
 
-        logger.info(f"Stored {count} GitHub issues")
+        logger.info(f"Stored {count} new GitHub issues (from {len(issues)} processed)")
         return count
 
     def fetch_and_store(self, query: str = None, limit: int = 20) -> int:

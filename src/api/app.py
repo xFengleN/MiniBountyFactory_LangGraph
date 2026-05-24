@@ -20,6 +20,16 @@ _startup_time = None
 WEB_UI_PATH = Path(__file__).parent / 'web_ui.html'
 
 
+@app.route('/api/health')
+def health_check():
+    from datetime import datetime
+    return jsonify({
+        'status': 'ok',
+        'timestamp': datetime.utcnow().isoformat(),
+        'orchestrator_running': orchestrator is not None and orchestrator.running,
+    })
+
+
 @app.route('/')
 def serve_web_ui():
     if WEB_UI_PATH.exists():
@@ -357,6 +367,11 @@ def serve_web_ui():
                         <div id="precheckTaskInfo" class="text-sm text-gray-400 mb-3"></div>
 
                         <div id="precheckWarnings" class="space-y-2 mb-4"></div>
+
+                        <div id="precheckBotCommentBox" class="mb-4 hidden">
+                            <label class="block text-sm text-gray-400 mb-1"><i class="fab fa-algolia mr-1"></i>Algora Bounty Info</label>
+                            <div id="precheckBotComment" class="text-xs text-gray-300 bg-gray-900 p-3 rounded font-mono whitespace-pre-wrap max-h-48 overflow-y-auto"></div>
+                        </div>
 
                         <div class="mb-4 hidden">
                             <label class="block text-sm text-gray-400 mb-1"><i class="fas fa-book mr-1"></i>CONTRIBUTING.md Rules</label>
@@ -1476,8 +1491,8 @@ def serve_web_ui():
                 function sortTasks(arr, sortKey) {
                     arr.sort((a, b) => {
                         switch (sortKey) {
-                            case 'fetched_desc': return new Date(b.fetched_at || 0) - new Date(a.fetched_at || 0);
-                            case 'fetched_asc': return new Date(a.fetched_at || 0) - new Date(b.fetched_at || 0);
+                            case 'fetched_desc': return (b.id || 0) - (a.id || 0);
+                            case 'fetched_asc': return (a.id || 0) - (b.id || 0);
                             case 'price_desc': return (b.price || 0) - (a.price || 0);
                             case 'price_asc': return (a.price || 0) - (b.price || 0);
                             case 'difficulty_asc': return (diffOrder[a.difficulty] || 0) - (diffOrder[b.difficulty] || 0);
@@ -2088,6 +2103,15 @@ def serve_web_ui():
                 }
 
                 commentBox.value = precheck.suggested_comment || '';
+
+                const botCommentBox = document.getElementById('precheckBotCommentBox');
+                const botCommentEl = document.getElementById('precheckBotComment');
+                if (precheck.algora_bot_comment) {
+                    botCommentBox.classList.remove('hidden');
+                    botCommentEl.textContent = precheck.algora_bot_comment;
+                } else {
+                    botCommentBox.classList.add('hidden');
+                }
 
                 if (precheck.contributing_rules) {
                     contributingBox.parentElement.classList.remove('hidden');

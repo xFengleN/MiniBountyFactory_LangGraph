@@ -5,9 +5,9 @@ from pydantic import BaseModel
 from langchain_ollama import ChatOllama
 
 from ..core.config import config
-from ..core.sandbox import validate_in_container
 from ..utils.logger import get_logger
 from ..utils.ollama_client import extract_token_stats
+from ..utils.prompts import load_prompt
 from .repo_mapper import RepoMapper
 
 logger = get_logger(__name__)
@@ -194,23 +194,14 @@ class CicdSpecialist:
                 },
             }
 
-        prompt = f"""You are a code review agent. Review generated code changes for correctness, quality, and safety.
+        template = load_prompt('cicd_review')
+        if template is None:
+            template = "You are a code review agent. Review generated code changes for correctness, quality, and safety.\n\nReview Checklist:\n1. SYNTAX - Does the code compile/parse correctly?\n2. LOGIC - Does the fix actually solve the issue?\n3. STYLE - Does it follow the codebase conventions?\n4. SECURITY - Any security vulnerabilities?\n5. EDGE CASES - What about boundary conditions?\n\nOriginal Issue: {title}\nDescription: {description}\nRepository: {repo_url}\n\nCode Diff:\n{diff_content}\n\nPerform a thorough review."
 
-Review Checklist:
-1. SYNTAX - Does the code compile/parse correctly?
-2. LOGIC - Does the fix actually solve the issue?
-3. STYLE - Does it follow the codebase conventions?
-4. SECURITY - Any security vulnerabilities?
-5. EDGE CASES - What about boundary conditions?
-
-Original Issue: {title}
-Description: {description}
-Repository: {repo_url}
-
-Code Diff:
-{diff_content[:4000]}
-
-Perform a thorough review."""
+        prompt = template.format(
+            title=title, description=description,
+            repo_url=repo_url, diff_content=diff_content[:4000],
+        )
 
         try:
             self._ensure_review_llm()
@@ -269,24 +260,18 @@ Perform a thorough review."""
     ) -> Optional[Dict[str, Any]]:
         failure_text = '\n'.join(failures[:15])
 
-        prompt = f"""You are fixing test failures. The test suite is failing and you need to fix the code.
+        template = load_prompt('cicd_test_fix')
+        if template is None:
+            template = "You are fixing test failures. The test suite is failing and you need to fix the code.\n\nIssue: {title}\n\nTest Failures:\n{failure_text}\n\nRepository path: {repo_path}\nLanguage: {language}\nTest command: {test_command}\nInstall command: {install_command}\n\nAnalyze the failures and generate fixes. Return ONLY the file changes as a JSON array:\n[\n  {{\"path\": \"relative/file/path.py\", \"content\": \"full file content after fix\", \"action\": \"modify\"}}\n]\n\nMake only the changes needed to fix the failures."
 
-Issue: {title}
-
-Test Failures:
-{failure_text}
-
-Repository path: {repo_path}
-Language: {repo_map.get('language', 'unknown')}
-Test command: {repo_map.get('test_command', 'unknown')}
-Install command: {repo_map.get('install_command', 'unknown')}
-
-Analyze the failures and generate fixes. Return ONLY the file changes as a JSON array:
-[
-  {{"path": "relative/file/path.py", "content": "full file content after fix", "action": "modify"}}
-]
-
-Make only the changes needed to fix the failures."""
+        prompt = template.format(
+            title=title,
+            failure_text=failure_text,
+            repo_path=repo_path,
+            language=repo_map.get('language', 'unknown'),
+            test_command=repo_map.get('test_command', 'unknown'),
+            install_command=repo_map.get('install_command', 'unknown'),
+        )
 
         try:
             response = self._get_fix_llm().invoke(prompt)
