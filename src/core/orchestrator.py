@@ -556,8 +556,6 @@ class BountyFactoryOrchestrator:
                         break
                 issues = issues[:limit]
 
-                wants_paid = min_price > 0 or max_price > 0
-
                 if wants_paid:
                     before = len(issues)
                     def in_range(i):
@@ -573,6 +571,17 @@ class BountyFactoryOrchestrator:
                         logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
 
                 count = self.github_scout.store_issues(issues)
+
+                if wants_paid:
+                    try:
+                        algo = self.algora_client.fetch_bounties(limit=limit)
+                        filt = [b for b in algo if b.get('price') and min_price <= b['price'] <= max_price]
+                        if filt:
+                            self.github_scout.store_issues(filt)
+                            count += len(filt)
+                            logger.info(f"Algora fallback: added {len(filt)} paid bounties in ${min_price}-${max_price}")
+                    except Exception as e:
+                        logger.warning(f"Algora fallback failed: {e}")
         else:
             algora_bounties = self.algora_client.fetch_bounties(limit=limit)
 
