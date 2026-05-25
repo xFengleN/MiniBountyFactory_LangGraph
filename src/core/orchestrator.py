@@ -544,17 +544,24 @@ class BountyFactoryOrchestrator:
 
                 wants_paid = min_price > 0 or max_price > 0
                 if wants_paid:
-                    bounty_q = 'label:"bounty" state:open'
-                    if bounty_q not in queries:
-                        queries.append(bounty_q)
+                    paid_label_qs = [
+                        'label:"bounty" state:open',
+                        'label:"reward" state:open',
+                        'label:"funded" state:open',
+                        'label:"sponsored" state:open',
+                        'label:"paid" state:open',
+                        'label:"prize" state:open',
+                        'label:"grant" state:open',
+                        '"bounty" "$" in:title state:open',
+                    ]
+                    for q in paid_label_qs:
+                        if q not in queries:
+                            queries.append(q)
 
+                per_query = max(2, limit // max(len(queries), 1)) if queries else limit
                 issues = []
-                per_query = max(1, limit // len(queries)) if queries else limit
                 for q in queries:
                     issues.extend(self.github_scout.search_issues(query=q, limit=per_query))
-                    if len(issues) >= limit:
-                        break
-                issues = issues[:limit]
 
                 if wants_paid:
                     before = len(issues)
@@ -564,11 +571,13 @@ class BountyFactoryOrchestrator:
                     issues = [i for i in issues if in_range(i)]
                     if before != len(issues):
                         logger.info("price filter $%s-$%s: filtered %d issues (kept %d)", min_price, max_price, before - len(issues), len(issues))
-                elif config.get('test_mode.skip_paid', False):
-                    before = len(issues)
-                    issues = [i for i in issues if not i.get('is_bounty') and not i.get('price')]
-                    if before != len(issues):
-                        logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
+                else:
+                    issues = issues[:limit]
+                    if config.get('test_mode.skip_paid', False):
+                        before = len(issues)
+                        issues = [i for i in issues if not i.get('is_bounty') and not i.get('price')]
+                        if before != len(issues):
+                            logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
 
                 new_count = self.github_scout.store_issues(issues)
 

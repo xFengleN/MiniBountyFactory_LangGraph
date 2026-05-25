@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import shutil
@@ -175,12 +176,94 @@ class AlgoraClient:
             soup = BeautifulSoup(resp.text, 'html.parser')
             bounties = self._parse_bounties(soup, limit)
 
+            if len(bounties) < 30:
+                try:
+                    playwright_bounties = self._fetch_with_playwright(max(limit, 30))
+                    existing_urls = {b['issue_url'] for b in bounties}
+                    for b in playwright_bounties:
+                        if b['issue_url'] not in existing_urls:
+                            bounties.append(b)
+                            existing_urls.add(b['issue_url'])
+                except Exception as e:
+                    logger.warning(f'Playwright fallback failed: {e}')
+
             logger.info(f'Scraped {len(bounties)} bounties from Algora')
             return bounties
 
         except Exception as e:
             logger.error(f'Algora fetch failed: {e}')
             return []
+
+    def _fetch_with_playwright(self, limit: int = 100) -> List[Dict[str, Any]]:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            logger.warning('playwright not installed, cannot scroll Algora page')
+            return []
+
+        bounties = []
+        seen_urls = set()
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            ctx = browser.new_context()
+            if self._session_cookie:
+                ctx.add_cookies([{
+                    'name': '_algora_key',
+                    'value': self._session_cookie,
+                    'domain': 'algora.io',
+                    'path': '/'
+                }])
+            page = ctx.new_page()
+            page.goto('https://algora.io/bounties', wait_until='networkidle')
+
+            for _ in range(10):
+                if len(bounties) >= limit:
+                    break
+                links = page.locator('a[href*="github.com"][href*="/issues/"]').all()
+                for link in links:
+                    if len(bounties) >= limit:
+                        break
+                    href = link.get_attribute('href')
+                    if not href or href in seen_urls:
+                        continue
+                    price_el = link.locator('[class*="tabular-nums"]').first
+                    if not price_el:
+                        continue
+                    price_text = price_el.text_content()
+                    price = self._parse_price(price_text or '')
+                    if price is None:
+                        continue
+                    org_el = link.locator('.font-semibold').first
+                    number_el = link.locator('.text-muted-foreground').first
+                    title_el = link.locator('.text-foreground').first
+                    org_name = org_el.text_content() or '' if org_el else ''
+                    issue_number = number_el.text_content() or '' if number_el else ''
+                    title = title_el.text_content() or '' if title_el else ''
+                    repo_url = '/'.join(href.rstrip('/').split('/')[:5]) if 'github.com' in href else href
+                    seen_urls.add(href)
+                    bounties.append({
+                        'id': f'algora-pw-{len(bounties) + 1}',
+                        'title': title.strip(),
+                        'description': '',
+                        'price': price,
+                        'currency': 'USD',
+                        'difficulty': self._estimate_difficulty(title or ''),
+                        'repository_url': repo_url,
+                        'repository_name': org_name.strip(),
+                        'issue_url': href,
+                        'tags': '',
+                        'created_at': datetime.utcnow().isoformat(),
+                        'github_score': 0,
+                        'is_bounty': 1,
+                    })
+                page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                page.wait_for_timeout(2000)
+
+            browser.close()
+
+        logger.info(f'Playwright scraped {len(bounties)} bounties from Algora')
+        return bounties[:limit]
 
     def _parse_bounties(self, soup: BeautifulSoup, limit: int) -> List[Dict[str, Any]]:
         bounties = []
