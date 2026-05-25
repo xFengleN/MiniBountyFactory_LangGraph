@@ -421,19 +421,25 @@ def serve_web_ui():
                         <div id="planAttemptTaskInfo" class="text-sm text-gray-400 mb-3"></div>
                         <div id="planAttemptAlgoraBox" class="mb-4 hidden">
                             <details class="bg-gray-850 rounded border border-gray-700">
-                                <summary class="px-3 py-2 text-sm text-cyan-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fab fa-algolia mr-2"></i>Algora Bounty Info <span id="planAttemptAlgoraSummary" class="text-xs text-gray-500 ml-2"></span></summary>
+                                <summary class="px-3 py-2 text-sm text-cyan-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fab fa-algolia mr-2"></i>Algora Bounty Info <span id="planAttemptAlgoraSummary" class="text-xs text-cyan-400 ml-2"></span></summary>
                                 <div id="planAttemptAlgoraComment" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto"></div>
+                            </details>
+                        </div>
+                        <div id="planAttemptActivityBox" class="mb-4 hidden">
+                            <details class="bg-gray-850 rounded border border-gray-700">
+                                <summary class="px-3 py-2 text-sm text-orange-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-users mr-2"></i>Assignment &amp; Activity <span id="planAttemptActivitySummary" class="text-xs text-orange-400 ml-2"></span></summary>
+                                <div id="planAttemptActivityBody" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto"></div>
                             </details>
                         </div>
                         <div id="planAttemptRipenessBox" class="mb-4 hidden">
                             <details class="bg-gray-850 rounded border border-gray-700">
-                                <summary class="px-3 py-2 text-sm text-green-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-leaf mr-2"></i>Ripeness Score <span id="planAttemptRipenessSummary" class="text-xs text-gray-500 ml-2"></span></summary>
+                                <summary class="px-3 py-2 text-sm text-green-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-leaf mr-2"></i>Ripeness Score <span id="planAttemptRipenessSummary" class="text-xs text-green-400 ml-2"></span></summary>
                                 <div id="planAttemptRipenessBody" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto"></div>
                             </details>
                         </div>
                         <div id="planAttemptProfileBox" class="mb-4 hidden">
                             <details class="bg-gray-850 rounded border border-gray-700">
-                                <summary class="px-3 py-2 text-sm text-amber-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-chart-bar mr-2"></i>Repo Behavioral Profile <span id="planAttemptProfileSummary" class="text-xs text-gray-500 ml-2"></span></summary>
+                                <summary class="px-3 py-2 text-sm text-amber-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-chart-bar mr-2"></i>Repo Behavioral Profile <span id="planAttemptProfileSummary" class="text-xs text-amber-400 ml-2"></span></summary>
                                 <div id="planAttemptProfileBody" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto"></div>
                             </details>
                         </div>
@@ -2157,54 +2163,60 @@ def serve_web_ui():
                 }
                 const warningsContainer = document.getElementById('planAttemptWarnings');
                 warningsContainer.innerHTML = '';
+                const activityBox = document.getElementById('planAttemptActivityBox');
+                const activityBody = document.getElementById('planAttemptActivityBody');
+                const activitySummary = document.getElementById('planAttemptActivitySummary');
                 if (data.error) {
                     const div = document.createElement('div');
                     div.className = 'text-sm text-red-400 flex items-center gap-2';
                     div.innerHTML = '<i class="fas fa-times-circle"></i> Pre-check error: ' + data.error;
                     warningsContainer.appendChild(div);
+                    activityBox.classList.add('hidden');
                 } else {
                     let hasIssues = false;
+                    let activityLines = [];
+                    let summaryParts = [];
+
                     if (data.is_assigned && data.assignees && data.assignees.length > 0) {
                         hasIssues = true;
-                        const div = document.createElement('div');
-                        div.className = 'text-sm text-red-400 flex items-center gap-2';
-                        div.innerHTML = '<i class="fas fa-user-lock"></i> Assigned to: ' + data.assignees.join(', ');
-                        warningsContainer.appendChild(div);
+                        summaryParts.push('Assigned: ' + data.assignees.join(', '));
+                        activityLines.push('Assigned to: ' + data.assignees.join(', '));
                     }
                     if (data.recent_claims && data.recent_claims.length > 0) {
                         hasIssues = true;
+                        summaryParts.push(data.recent_claims.length + ' claims');
                         data.recent_claims.forEach(function(c) {
-                            const div = document.createElement('div');
-                            div.className = 'text-sm text-orange-400 flex items-center gap-2';
-                            div.innerHTML = '<i class="fas fa-hand-paper"></i> @' + c.user + ' claimed ' + c.time;
-                            warningsContainer.appendChild(div);
+                            activityLines.push('@' + c.user + ' claimed ' + c.time);
                         });
                     }
                     if (data.algora_status === 'locked') {
                         hasIssues = true;
-                        const div = document.createElement('div');
-                        div.className = 'text-sm text-red-400 flex items-center gap-2';
-                        div.innerHTML = '<i class="fas fa-lock"></i> Algora exclusive bounty assigned to @' + (data.algora_assignee || 'unknown');
-                        warningsContainer.appendChild(div);
+                        summaryParts.push('Algora locked');
+                        activityLines.push('Algora exclusive bounty assigned to @' + (data.algora_assignee || 'unknown'));
                     }
                     if (data.winning_prs && data.winning_prs.length > 0) {
                         hasIssues = true;
+                        summaryParts.push(data.winning_prs.length + ' winning PRs');
                         data.winning_prs.forEach(function(p) {
-                            const div = document.createElement('div');
-                            div.className = 'text-sm text-red-400 flex items-center gap-2';
-                            div.innerHTML = '<i class="fas fa-code-branch"></i> PR #' + p.number + ' by @' + p.user + ' already passing CI';
-                            warningsContainer.appendChild(div);
+                            activityLines.push('PR #' + p.number + ' by @' + p.user + ' already passing CI');
                         });
                     }
                     if (data.active_prs && data.active_prs.length > 0 && (!data.winning_prs || data.winning_prs.length === 0)) {
                         hasIssues = true;
+                        summaryParts.push(data.active_prs.length + ' active PRs');
                         data.active_prs.forEach(function(p) {
-                            const div = document.createElement('div');
-                            div.className = 'text-sm text-yellow-400 flex items-center gap-2';
-                            div.innerHTML = '<i class="fas fa-code-branch"></i> PR #' + p.number + ' by @' + p.user + ' \u2014 CI status: ' + (p.ci_passing ? 'passing' : 'pending/failing');
-                            warningsContainer.appendChild(div);
+                            activityLines.push('PR #' + p.number + ' by @' + p.user + ' \u2014 CI status: ' + (p.ci_passing ? 'passing' : 'pending/failing'));
                         });
                     }
+
+                    if (activityLines.length > 0) {
+                        activityBox.classList.remove('hidden');
+                        activityBody.textContent = activityLines.join('\\n');
+                        activitySummary.textContent = '\u2014 ' + summaryParts.join(' | ');
+                    } else {
+                        activityBox.classList.add('hidden');
+                    }
+
                     if (data.warnings && data.warnings.length > 0) {
                         data.warnings.forEach(function(w) {
                             const div = document.createElement('div');
@@ -2219,25 +2231,6 @@ def serve_web_ui():
                         d.innerHTML = '<i class="fas fa-check-circle mr-1"></i> Issue appears available \u2014 no conflicts detected';
                         warningsContainer.appendChild(d);
                     }
-
-                    var wip = data.algora_wip_count;
-                    var awardCount = data.algora_award_count;
-                    var hasAlgora = !!(data.algora_bot_comment);
-                    var wipTxt = (hasAlgora && wip !== undefined && wip !== null) ? String(wip) : 'not detected';
-                    var awardTxt = (hasAlgora && awardCount !== undefined && awardCount !== null) ? String(awardCount) : 'not detected';
-                    var d = document.createElement('div');
-                    d.className = 'text-sm text-green-400 flex items-center gap-2 border-t border-gray-700 pt-2 mt-2 font-medium';
-                    d.innerHTML = '<i class="fab fa-algolia"></i> WIP: ' + wipTxt + ', Rewards: ' + awardTxt + ' <span id="planAttemptDebugToggle" class="text-xs text-gray-600 cursor-pointer hover:text-gray-400">[debug]</span>';
-                    warningsContainer.appendChild(d);
-                    document.getElementById('planAttemptDebugToggle').onclick = function() {
-                        var x = document.getElementById('planAttemptDebugBot');
-                        x.style.display = (x.style.display === 'none') ? 'block' : 'none';
-                    };
-                    var debugDiv = document.createElement('div');
-                    debugDiv.id = 'planAttemptDebugBot';
-                    debugDiv.className = 'text-xs text-gray-600 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto bg-gray-900 p-2 rounded hidden';
-                    debugDiv.textContent = data._debug_raw_bot || '(no raw bot data)';
-                    warningsContainer.appendChild(debugDiv);
                 }
                 document.getElementById('planAttemptComment').value = data.generated_comment || '';
                 document.getElementById('planAttemptGeneratedBy').innerHTML = '<i class="fas fa-info-circle mr-1"></i>' + (data.generated_by || 'Generated by Bounty Factory');
