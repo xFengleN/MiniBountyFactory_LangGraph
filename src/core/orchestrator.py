@@ -540,7 +540,14 @@ class BountyFactoryOrchestrator:
                 if labels:
                     queries = [f'label:"{label}" state:open' for label in labels]
                 else:
-                    queries = config.get('test_mode.github_queries', [])
+                    queries = config.get('test_mode.github_queries', [])[:]
+
+                wants_paid = min_price > 0 or max_price > 0
+                if wants_paid:
+                    bounty_q = 'label:"bounty" state:open'
+                    if bounty_q not in queries:
+                        queries.append(bounty_q)
+
                 issues = []
                 per_query = max(1, limit // len(queries)) if queries else limit
                 for q in queries:

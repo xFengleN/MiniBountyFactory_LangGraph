@@ -780,7 +780,7 @@ def serve_web_ui():
 
             function updateScanMode() {
                 const isTest = document.getElementById('scanModeTest').checked;
-                document.getElementById('priceRangeSection').classList.toggle('hidden', isTest);
+                document.getElementById('priceRangeSection').classList.toggle('hidden', false);
                 document.getElementById('labelSelectorSection').classList.toggle('hidden', !isTest);
                 if (!isTest) {
                     if (document.getElementById('minPrice').value === '0' || document.getElementById('minPrice').value === '') {
@@ -837,6 +837,7 @@ def serve_web_ui():
                 const maxPrice = parseInt(document.getElementById('maxPrice').value) || 0;
                 const limit = parseInt(document.getElementById('maxTasks').value) || 10;
                 const labels = window._selectedLabels || [];
+
 
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Scanning...';
