@@ -128,7 +128,7 @@ class GitHubIssueChecker:
         return result
 
     def _parse_issue_url(self, url: str) -> tuple:
-        match = re.search(r'github\.com/([^/]+)/([^/]+)/issues/(\d+)', url)
+        match = re.search(r'github\.com/([^/]+)/([^/]+)/(?:issues|pull)/(\d+)', url)
         if match:
             return match.group(1), match.group(2), int(match.group(3))
         return None, None, None
