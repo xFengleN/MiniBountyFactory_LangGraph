@@ -577,11 +577,18 @@ class BountyFactoryOrchestrator:
                         algo = self.algora_client.fetch_bounties(limit=limit)
                         filt = [b for b in algo if b.get('price') and min_price <= b['price'] <= max_price]
                         if filt:
-                            self.github_scout.store_issues(filt)
-                            count += len(filt)
-                            logger.info(f"Algora fallback: added {len(filt)} paid bounties in ${min_price}-${max_price}")
+                            added = self.github_scout.store_issues(filt)
+                            if added:
+                                count += added
+                                logger.info(f"Algora fallback: stored {added} new paid bounties")
                     except Exception as e:
                         logger.warning(f"Algora fallback failed: {e}")
+
+                    # Report real total matching from DB
+                    all_bounties = db.get_all_bounties()
+                    match_count = sum(1 for b in all_bounties if b.get('price') and min_price <= b['price'] <= max_price)
+                    if match_count > count:
+                        count = match_count
         else:
             algora_bounties = self.algora_client.fetch_bounties(limit=limit)
 
