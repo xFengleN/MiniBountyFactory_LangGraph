@@ -390,13 +390,17 @@ class BountyFactoryOrchestrator:
         wip_count = 0
         award_total = 0
         award_count = 0
+        algora_entries = []
         wip_markers = ['☑', '✅', '🟡', '⏳', 'yes', 'wip', 'in progress']
+
+        attempt_users = [c.get('user', '') for c in check.get('recent_claims', [])]
+        assignees = check.get('assignees', [])
 
         # Count $amounts from ALL lines for the monetary total
         for d in re.findall(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', bot):
             award_total += int(d.replace(',', ''))
 
-        # Parse table data rows for award/wip counts
+        # Parse table data rows for award/wip counts + entry-level data
         for line in bot.split('\n'):
             stripped = line.strip()
             if not stripped.startswith('|') or not stripped.endswith('|'):
@@ -421,6 +425,24 @@ class BountyFactoryOrchestrator:
                     wip_count += 1
             elif has_wip:
                 wip_count += 1
+
+            # Extract user and PR for protocol compliance
+            entry_user = ''
+            entry_pr = None
+            for cell in cells:
+                m = re.search(r'@(\w[\w-]*)', cell)
+                if m:
+                    entry_user = m.group(1)
+                m = re.search(r'#(\d+)', cell)
+                if m:
+                    entry_pr = m.group(1)
+
+            algora_entries.append({
+                'user': entry_user,
+                'has_reward': has_reward or has_dollar,
+                'has_pr': entry_pr is not None,
+            })
+
         precheck['algora_wip_count'] = wip_count
         precheck['algora_award_count'] = award_count
         precheck['algora_award_total'] = award_total
@@ -430,7 +452,12 @@ class BountyFactoryOrchestrator:
         owner = check.get('owner', '')
         repo_name = check.get('repo', '')
         if owner and repo_name:
-            repo_profiler.record_observation(owner, repo_name, check, award_count, wip_count)
+            repo_profiler.record_observation(
+                owner, repo_name, check, award_count, wip_count,
+                algora_entries=algora_entries,
+                attempt_users=attempt_users,
+                assignees=assignees,
+            )
             precheck['repo_profile'] = repo_profiler.get_profile(owner, repo_name)
         else:
             precheck['repo_profile'] = repo_profiler._default_profile()

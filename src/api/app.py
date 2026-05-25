@@ -2095,6 +2095,7 @@ def serve_web_ui():
                 if (data.repo_profile && data.repo_profile.observation_count > 0) {
                     profileBox.classList.remove('hidden');
                     var p = data.repo_profile;
+                    var c = p.compliance || {};
                     profileSummary.textContent = '\u2014 ' + p.observation_count + ' observations';
                     var lines = [];
                     lines.push('Observation count: ' + p.observation_count);
@@ -2106,6 +2107,12 @@ def serve_web_ui():
                     lines.push('Avg WIP entries: ' + p.avg_wip);
                     lines.push('Contributing.md rate: ' + (p.contributing_rate * 100).toFixed(0) + '%');
                     lines.push('Avg PRs per issue: ' + p.avg_prs);
+                    lines.push('');
+                    lines.push('--- Protocol Compliance ---');
+                    lines.push('Attempt->Reward rate: ' + (c.attempt_comment_enforced * 100).toFixed(0) + '%');
+                    lines.push('Assignment->Reward rate: ' + (c.assignment_enforced * 100).toFixed(0) + '%');
+                    lines.push('Reward requires /attempt: ' + (c.reward_requires_attempt * 100).toFixed(0) + '%');
+                    lines.push('Reward requires merge: ' + (c.reward_requires_merge * 100).toFixed(0) + '%');
                     profileBody.textContent = lines.join('\\n');
                 } else {
                     profileBox.classList.add('hidden');

@@ -1,5 +1,4 @@
 import json
-import time
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
@@ -15,7 +14,11 @@ class RepoProfiler:
     def __init__(self):
         pass
 
-    def record_observation(self, owner: str, repo: str, check: dict, award_count: int, wip_count: int) -> dict:
+    def record_observation(self, owner: str, repo: str, check: dict,
+                           award_count: int, wip_count: int,
+                           algora_entries: list = None,
+                           attempt_users: list = None,
+                           assignees: list = None) -> dict:
         repo_key = f'{owner}/{repo}'
         now = datetime.now(timezone.utc).isoformat()
 
@@ -29,6 +32,11 @@ class RepoProfiler:
             'wip_count': wip_count,
             'has_contributing': check.get('has_contributing', False),
             'pr_count': len(check.get('active_prs', [])),
+            'compliance': self._compute_compliance(
+                algora_entries or [],
+                attempt_users or [],
+                assignees or [],
+            ),
         }
 
         existing = db.get_repo_profile(repo_key)
@@ -53,9 +61,7 @@ class RepoProfiler:
             obs_count=obs_count,
         )
 
-        logger.debug(f'Repo profile updated for {repo_key}: {obs_count} observations, '
-                      f'avg_claims={profile["avg_claims"]:.1f}, '
-                      f'alg_freq={profile["algora_frequency"]:.0%}')
+        logger.debug(f'Repo profile updated for {repo_key}: {obs_count} obs')
 
         return profile
 
@@ -65,6 +71,36 @@ class RepoProfiler:
         if existing:
             return json.loads(existing['profile_data'])
         return self._default_profile()
+
+    def _compute_compliance(self, algo_entries: list, attempt_users: list, assignees: list) -> dict:
+        attempt_set = set(attempt_users)
+        assign_set = set(assignees)
+
+        result = {
+            'attempted_in_table': 0,
+            'assigned_in_table': 0,
+            'rewarded_total': 0,
+            'rewarded_and_attempted': 0,
+            'rewarded_and_assigned': 0,
+            'rewarded_with_pr': 0,
+        }
+
+        for entry in algo_entries:
+            user = entry.get('user', '')
+            if user in attempt_set:
+                result['attempted_in_table'] += 1
+            if user in assign_set:
+                result['assigned_in_table'] += 1
+            if entry.get('has_reward', False):
+                result['rewarded_total'] += 1
+                if user in attempt_set:
+                    result['rewarded_and_attempted'] += 1
+                if user in assign_set:
+                    result['rewarded_and_assigned'] += 1
+                if entry.get('has_pr', False):
+                    result['rewarded_with_pr'] += 1
+
+        return result
 
     def _compute_profile(self, observations: list) -> dict:
         n = len(observations)
@@ -80,6 +116,31 @@ class RepoProfiler:
         contributing_count = sum(1 for o in observations if o['has_contributing'])
         total_prs = sum(o['pr_count'] for o in observations)
 
+        # Aggregate compliance across all observations
+        comp_totals = {
+            'attempted_in_table': 0,
+            'assigned_in_table': 0,
+            'rewarded_total': 0,
+            'rewarded_and_attempted': 0,
+            'rewarded_and_assigned': 0,
+            'rewarded_with_pr': 0,
+        }
+        for o in observations:
+            c = o.get('compliance', {})
+            for k in comp_totals:
+                comp_totals[k] += c.get(k, 0)
+
+        compliance = {
+            'attempt_comment_enforced': round(
+                comp_totals['rewarded_and_attempted'] / max(comp_totals['attempted_in_table'], 1), 2),
+            'assignment_enforced': round(
+                comp_totals['rewarded_and_assigned'] / max(comp_totals['assigned_in_table'], 1), 2),
+            'reward_requires_attempt': round(
+                comp_totals['rewarded_and_attempted'] / max(comp_totals['rewarded_total'], 1), 2),
+            'reward_requires_merge': round(
+                comp_totals['rewarded_with_pr'] / max(comp_totals['rewarded_total'], 1), 2),
+        }
+
         return {
             'observation_count': n,
             'avg_claims': round(total_claims / n, 2),
@@ -90,6 +151,7 @@ class RepoProfiler:
             'avg_wip': round(total_wip / n, 2),
             'contributing_rate': round(contributing_count / n, 2),
             'avg_prs': round(total_prs / n, 2),
+            'compliance': compliance,
         }
 
     def _default_profile(self) -> dict:
@@ -103,6 +165,12 @@ class RepoProfiler:
             'avg_wip': 0.0,
             'contributing_rate': 0.0,
             'avg_prs': 0.0,
+            'compliance': {
+                'attempt_comment_enforced': 0.0,
+                'assignment_enforced': 0.0,
+                'reward_requires_attempt': 0.0,
+                'reward_requires_merge': 0.0,
+            },
         }
 
 
