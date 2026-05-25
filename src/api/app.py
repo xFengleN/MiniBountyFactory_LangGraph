@@ -688,13 +688,25 @@ def serve_web_ui():
 
                 <div class="space-y-4">
                     <div>
+                        <label class="block text-sm text-gray-400 mb-1">Type</label>
+                        <div class="flex space-x-4">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="radio" name="bountyType" value="free" id="typeFree" checked onchange="updateBountyType()" class="accent-purple-500">
+                                <span class="text-sm">Free</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="radio" name="bountyType" value="paid" id="typePaid" onchange="updateBountyType()" class="accent-purple-500">
+                                <span class="text-sm">Paid</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="priceRangeSection">
                         <label class="block text-sm text-gray-400 mb-1">Price Range ($)</label>
                         <div class="flex items-center space-x-2">
                             <input type="number" id="minPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
                             <span class="text-gray-400">to</span>
                             <input type="number" id="maxPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">Leave as 0–0 for free tasks. Set a range (e.g. 5–150) for paid bounties.</p>
                     </div>
 
                     <div>
@@ -762,11 +774,27 @@ def serve_web_ui():
                 document.getElementById('scanModal').classList.remove('flex');
             }
 
+            function updateBountyType() {
+                const isPaid = document.getElementById('typePaid').checked;
+                if (isPaid) {
+                    if (document.getElementById('minPrice').value === '0' || document.getElementById('minPrice').value === '') {
+                        document.getElementById('minPrice').value = '5';
+                    }
+                    if (document.getElementById('maxPrice').value === '0' || document.getElementById('maxPrice').value === '') {
+                        document.getElementById('maxPrice').value = '150';
+                    }
+                } else {
+                    document.getElementById('minPrice').value = '0';
+                    document.getElementById('maxPrice').value = '0';
+                }
+            }
+
             function openScanModal() {
                 window._selectedLabels = [];
                 renderLabels();
                 document.getElementById('scanModal').classList.remove('hidden');
                 document.getElementById('scanModal').classList.add('flex');
+                updateBountyType();
             }
 
             function addLabel() {
