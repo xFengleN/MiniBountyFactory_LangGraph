@@ -19,6 +19,7 @@ from ..agents.github_scout import GitHubScout
 from ..agents.github_checker import GitHubIssueChecker
 from ..agents.comment_generator import CommentGenerator
 from ..agents.repo_mapper import RepoMapper
+from .repo_profiler import repo_profiler
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -425,6 +426,15 @@ class BountyFactoryOrchestrator:
         precheck['algora_award_total'] = award_total
         precheck['generated_by'] = 'Bounty Factory — template-based planner (no LLM used for plan generation)'
         precheck['_debug_raw_bot'] = bot[:2000]
+
+        owner = check.get('owner', '')
+        repo_name = check.get('repo', '')
+        if owner and repo_name:
+            repo_profiler.record_observation(owner, repo_name, check, award_count, wip_count)
+            precheck['repo_profile'] = repo_profiler.get_profile(owner, repo_name)
+        else:
+            precheck['repo_profile'] = repo_profiler._default_profile()
+
         logger.debug(f'Bounty {bounty_id}: Algora parser — wip={wip_count}, awards={award_count}, total=${award_total}')
         return precheck
 

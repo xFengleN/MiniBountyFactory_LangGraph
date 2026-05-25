@@ -425,6 +425,12 @@ def serve_web_ui():
                                 <div id="planAttemptAlgoraComment" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto"></div>
                             </details>
                         </div>
+                        <div id="planAttemptProfileBox" class="mb-4 hidden">
+                            <details class="bg-gray-850 rounded border border-gray-700">
+                                <summary class="px-3 py-2 text-sm text-amber-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-chart-bar mr-2"></i>Repo Behavioral Profile <span id="planAttemptProfileSummary" class="text-xs text-gray-500 ml-2"></span></summary>
+                                <div id="planAttemptProfileBody" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto"></div>
+                            </details>
+                        </div>
                         <div id="planAttemptContributingBox" class="mb-4 hidden">
                             <details class="bg-gray-850 rounded border border-gray-700">
                                 <summary class="px-3 py-2 text-sm text-purple-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-book mr-2"></i>Owner's Rules (CONTRIBUTING.md)</summary>
@@ -2082,6 +2088,27 @@ def serve_web_ui():
                     algoraSummary.textContent = summaryParts.length > 0 ? '\u2014 ' + summaryParts.join(' | ') : '';
                 } else {
                     algoraBox.classList.add('hidden');
+                }
+                const profileBox = document.getElementById('planAttemptProfileBox');
+                const profileBody = document.getElementById('planAttemptProfileBody');
+                const profileSummary = document.getElementById('planAttemptProfileSummary');
+                if (data.repo_profile && data.repo_profile.observation_count > 0) {
+                    profileBox.classList.remove('hidden');
+                    var p = data.repo_profile;
+                    profileSummary.textContent = '\u2014 ' + p.observation_count + ' observations';
+                    var lines = [];
+                    lines.push('Observation count: ' + p.observation_count);
+                    lines.push('Avg claims per issue: ' + p.avg_claims);
+                    lines.push('Assignment rate: ' + (p.assignment_rate * 100).toFixed(0) + '%');
+                    lines.push('Algora bounty frequency: ' + (p.algora_frequency * 100).toFixed(0) + '%');
+                    lines.push('Algora locked rate: ' + (p.algora_locked_rate * 100).toFixed(0) + '%');
+                    lines.push('Avg rewards per bounty: ' + p.avg_rewards);
+                    lines.push('Avg WIP entries: ' + p.avg_wip);
+                    lines.push('Contributing.md rate: ' + (p.contributing_rate * 100).toFixed(0) + '%');
+                    lines.push('Avg PRs per issue: ' + p.avg_prs);
+                    profileBody.textContent = lines.join('\\n');
+                } else {
+                    profileBox.classList.add('hidden');
                 }
                 const contribBox = document.getElementById('planAttemptContributingBox');
                 const contribEl = document.getElementById('planAttemptContributing');

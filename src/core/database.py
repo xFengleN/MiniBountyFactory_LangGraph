@@ -67,6 +67,18 @@ MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_bounties_external_id ON bounties(external_id);
         CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue(status);
     """),
+    (2, 'Repo profiles', """
+        CREATE TABLE IF NOT EXISTS repo_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo TEXT NOT NULL UNIQUE,
+            owner TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL DEFAULT '',
+            observations TEXT NOT NULL DEFAULT '[]',
+            observation_count INTEGER NOT NULL DEFAULT 0,
+            profile_data TEXT NOT NULL DEFAULT '{}',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """),
 ]
 
 
@@ -340,6 +352,25 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM bounties ORDER BY fetched_at DESC")
             return [dict(row) for row in cursor.fetchall()]
+
+    def get_repo_profile(self, repo: str) -> Optional[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM repo_profiles WHERE repo = ?", (repo,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def upsert_repo_profile(self, repo: str, owner: str, name: str, observations_json: str, profile_json: str, obs_count: int):
+        with self.get_connection() as conn:
+            conn.cursor().execute("""
+                INSERT INTO repo_profiles (repo, owner, name, observations, profile_data, observation_count, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(repo) DO UPDATE SET
+                    observations = excluded.observations,
+                    profile_data = excluded.profile_data,
+                    observation_count = excluded.observation_count,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (repo, owner, name, observations_json, profile_json, obs_count))
 
 
 db = Database()
