@@ -132,7 +132,12 @@ class BountyFactoryOrchestrator:
             if self.github_scout.is_available():
                 logger.info("Fetching free issues from GitHub...")
                 gh_issues = self.github_scout.search_issues(limit=20)
-                if config.get('test_mode.skip_paid', False):
+                bp_min = cfg.get('min_price', 0)
+                bp_max = cfg.get('max_price', 0)
+                if bp_min > 0 or bp_max > 0:
+                    gh_issues = [i for i in gh_issues if i.get('price') is not None and bp_min <= i['price'] <= bp_max]
+                    logger.info(f"Background price filter ${bp_min}-${bp_max}: {len(gh_issues)} issues kept")
+                elif config.get('test_mode.skip_paid', False):
                     before = len(gh_issues)
                     gh_issues = [i for i in gh_issues if not i.get('is_bounty') and not i.get('price')]
                     if before != len(gh_issues):
@@ -544,20 +549,21 @@ class BountyFactoryOrchestrator:
                         break
                 issues = issues[:limit]
 
-                if config.get('test_mode.skip_paid', False):
+                wants_paid = min_price > 0 or max_price > 0
+
+                if wants_paid:
+                    before = len(issues)
+                    def in_range(i):
+                        p = i.get('price')
+                        return p is not None and min_price <= p <= max_price
+                    issues = [i for i in issues if in_range(i)]
+                    if before != len(issues):
+                        logger.info("price filter $%s-$%s: filtered %d issues (kept %d)", min_price, max_price, before - len(issues), len(issues))
+                elif config.get('test_mode.skip_paid', False):
                     before = len(issues)
                     issues = [i for i in issues if not i.get('is_bounty') and not i.get('price')]
                     if before != len(issues):
                         logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
-
-                if min_price > 0 or max_price > 0:
-                    before = len(issues)
-                    def in_range(i):
-                        p = i.get('price')
-                        return p is None or (min_price <= p <= max_price)
-                    issues = [i for i in issues if in_range(i)]
-                    if before != len(issues):
-                        logger.info("price filter $%s-$%s: filtered %d issues (kept %d)", min_price, max_price, before - len(issues), len(issues))
 
                 count = self.github_scout.store_issues(issues)
         else:
