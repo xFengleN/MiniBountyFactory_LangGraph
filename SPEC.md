@@ -356,9 +356,9 @@ All config via `config/config.yaml`:
 
 | Section | Key | Description |
 |---------|-----|-------------|
-| `test_mode` | `enabled` | Toggle test (GitHub issues) vs production (Algora bounties) |
-| `test_mode` | `github_queries` | Search queries for test mode |
-| `test_mode` | `skip_paid` | Skip paid bounties in test mode |
+| `test_mode` | `github_queries` | Default GitHub query set used by scan when no custom labels are selected |
+| `test_mode` | `skip_paid` | For free scans, drop paid/bounty-tagged items from GitHub results |
+| `scan` (UI behavior) | `Free/Paid toggle` | Free sets `0-0` price range; Paid defaults to `5-150` and includes Algora + paid-label discovery |
 | `ollama` | `base_url` | Ollama API endpoint |
 | `ollama` | `models` | Model per task (classifier, simple_agent, code_reviewer) |
 | `git` | `username` | GitHub username |

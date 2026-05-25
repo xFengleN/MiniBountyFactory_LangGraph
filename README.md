@@ -249,12 +249,25 @@ Press `Ctrl+C` to stop the factory. The system will:
 
 ## Configuration
 
-### Test Mode vs Production
+### Scan Modes (UI)
 
-| Mode | Description |
-|------|-------------|
-| **Test** (`test_mode.enabled: true`) | Fetches GitHub "good first issue" labels, skips paid bounties |
-| **Production** (`test_mode.enabled: false`) | Fetches from Algora tRPC + GitHub bounty labels, processes paid tasks |
+The scan modal now uses a simple **Free / Paid** toggle:
+
+| Type | Behavior |
+|------|----------|
+| **Free** | Sets price range to `0-0`, searches GitHub query set for free/open tasks |
+| **Paid** | Auto-fills `5-150`, searches paid candidates and Algora bounties, then filters by price |
+
+Notes:
+- Scan result now reports both **total matching** and **newly added** counts
+- Paid scans can return matches that are already in DB (`Found X tasks (already in DB)`)
+- Price-range scans aggregate from GitHub + Algora and then reconcile against DB for total matching count
+
+### Compatibility Notes
+
+- Pre-check issue URL parsing accepts both GitHub issue and PR URLs:
+  - `https://github.com/<owner>/<repo>/issues/<n>`
+  - `https://github.com/<owner>/<repo>/pull/<n>`
 
 ### Agent Roles & Models
 
