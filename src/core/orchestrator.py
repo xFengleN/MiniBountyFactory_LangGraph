@@ -527,13 +527,13 @@ class BountyFactoryOrchestrator:
         limit: int = 10,
         min_price: int = 0,
         max_price: int = 0
-    ) -> int:
+    ) -> dict:
         mode = 'test' if test_mode else 'prod'
         logger.info(f"Manual scan: mode={mode}, labels={labels}, limit={limit}, price=${min_price}-${max_price}")
 
         db.cleanup_stale_tasks(days=30)
 
-        count = 0
+        new_count = 0
 
         if test_mode:
             if self.github_scout.is_available():
@@ -570,7 +570,7 @@ class BountyFactoryOrchestrator:
                     if before != len(issues):
                         logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
 
-                count = self.github_scout.store_issues(issues)
+                new_count = self.github_scout.store_issues(issues)
 
                 if wants_paid:
                     try:
@@ -579,16 +579,10 @@ class BountyFactoryOrchestrator:
                         if filt:
                             added = self.github_scout.store_issues(filt)
                             if added:
-                                count += added
+                                new_count += added
                                 logger.info(f"Algora fallback: stored {added} new paid bounties")
                     except Exception as e:
                         logger.warning(f"Algora fallback failed: {e}")
-
-                    # Report real total matching from DB
-                    all_bounties = db.get_all_bounties()
-                    match_count = sum(1 for b in all_bounties if b.get('price') and min_price <= b['price'] <= max_price)
-                    if match_count > count:
-                        count = match_count
         else:
             algora_bounties = self.algora_client.fetch_bounties(limit=limit)
 
@@ -605,7 +599,7 @@ class BountyFactoryOrchestrator:
                     filtered.append(bounty)
                 algora_bounties = filtered
 
-            count = self.github_scout.store_issues(algora_bounties)
+            new_count = self.github_scout.store_issues(algora_bounties)
 
             if self.github_scout.is_available():
                 bounty_queries = [
@@ -635,13 +629,12 @@ class BountyFactoryOrchestrator:
                     gh_issues = filtered
 
                 gh_count = self.github_scout.store_issues(gh_issues)
-                count += gh_count
+                new_count += gh_count
 
-            if min_price > 0 or max_price > 0:
-                all_bounties = db.get_all_bounties()
-                match_count = sum(1 for b in all_bounties if b.get('price') and min_price <= b['price'] <= max_price)
-                if match_count > count:
-                    count = match_count
+        total_match = 0
+        if min_price > 0 or max_price > 0:
+            all_bounties = db.get_all_bounties()
+            total_match = sum(1 for b in all_bounties if b.get('price') and min_price <= b['price'] <= max_price)
 
-        logger.info(f"Manual scan complete: found {count} tasks")
-        return count
+        logger.info(f"Manual scan: {new_count} new, {total_match} total matching in DB")
+        return {'new': new_count, 'total': total_match}

@@ -855,7 +855,13 @@ def serve_web_ui():
                         })
                     });
                     const data = await res.json();
-                    customAlert(`Found ${data.tasks_found} tasks`);
+                    let msg = `Found ${data.tasks_found} tasks`;
+                    if (data.new_tasks > 0) {
+                        msg += ` (${data.new_tasks} new)`;
+                    } else if (data.tasks_found > 0) {
+                        msg += ` (already in DB)`;
+                    }
+                    customAlert(msg);
                     loadTasks();
                     closeScanModal();
                 } catch (e) {
@@ -3282,7 +3288,7 @@ def scan_tasks():
     limit = data.get('limit', 10)
     labels = data.get('labels')
 
-    count = orchestrator.manual_scan(
+    result = orchestrator.manual_scan(
         test_mode=test_mode,
         labels=labels,
         limit=limit,
@@ -3290,7 +3296,7 @@ def scan_tasks():
         max_price=max_price
     )
 
-    return jsonify({'success': True, 'tasks_found': count})
+    return jsonify({'success': True, 'tasks_found': result['total'], 'new_tasks': result['new']})
 
 
 @app.route('/api/tasks', methods=['GET'])
