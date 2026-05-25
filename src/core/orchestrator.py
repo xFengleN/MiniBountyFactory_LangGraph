@@ -522,123 +522,73 @@ class BountyFactoryOrchestrator:
 
     def manual_scan(
         self,
-        test_mode: bool = True,
         labels: list = None,
         limit: int = 10,
         min_price: int = 0,
         max_price: int = 0
     ) -> dict:
-        mode = 'test' if test_mode else 'prod'
-        logger.info(f"Manual scan: mode={mode}, labels={labels}, limit={limit}, price=${min_price}-${max_price}")
+        logger.info(f"Manual scan: labels={labels}, limit={limit}, price=${min_price}-${max_price}")
 
         db.cleanup_stale_tasks(days=30)
 
         new_count = 0
+        wants_paid = min_price > 0 or max_price > 0
 
-        if test_mode:
-            if self.github_scout.is_available():
-                if labels:
-                    queries = [f'label:"{label}" state:open' for label in labels]
-                else:
-                    queries = config.get('test_mode.github_queries', [])[:]
+        if self.github_scout.is_available():
+            if labels:
+                queries = [f'label:"{label}" state:open' for label in labels]
+            else:
+                queries = config.get('test_mode.github_queries', [])[:]
 
-                wants_paid = min_price > 0 or max_price > 0
-                if wants_paid:
-                    paid_label_qs = [
-                        'label:"bounty" state:open',
-                        'label:"reward" state:open',
-                        'label:"funded" state:open',
-                        'label:"sponsored" state:open',
-                        'label:"paid" state:open',
-                        'label:"prize" state:open',
-                        'label:"grant" state:open',
-                        '"bounty" "$" in:title state:open',
-                    ]
-                    for q in paid_label_qs:
-                        if q not in queries:
-                            queries.append(q)
-
-                per_query = max(2, limit // max(len(queries), 1)) if queries else limit
-                issues = []
-                for q in queries:
-                    issues.extend(self.github_scout.search_issues(query=q, limit=per_query))
-
-                if wants_paid:
-                    before = len(issues)
-                    def in_range(i):
-                        p = i.get('price')
-                        return p is not None and min_price <= p <= max_price
-                    issues = [i for i in issues if in_range(i)]
-                    if before != len(issues):
-                        logger.info("price filter $%s-$%s: filtered %d issues (kept %d)", min_price, max_price, before - len(issues), len(issues))
-                else:
-                    issues = issues[:limit]
-                    if config.get('test_mode.skip_paid', False):
-                        before = len(issues)
-                        issues = [i for i in issues if not i.get('is_bounty') and not i.get('price')]
-                        if before != len(issues):
-                            logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
-
-                new_count = self.github_scout.store_issues(issues)
-
-                if wants_paid:
-                    try:
-                        algo = self.algora_client.fetch_bounties(limit=limit)
-                        filt = [b for b in algo if b.get('price') and min_price <= b['price'] <= max_price]
-                        if filt:
-                            added = self.github_scout.store_issues(filt)
-                            if added:
-                                new_count += added
-                                logger.info(f"Algora fallback: stored {added} new paid bounties")
-                    except Exception as e:
-                        logger.warning(f"Algora fallback failed: {e}")
-        else:
-            algora_bounties = self.algora_client.fetch_bounties(limit=limit)
-
-            if min_price > 0 or max_price > 0:
-                filtered = []
-                for bounty in algora_bounties:
-                    price = bounty.get('price')
-                    if price is None:
-                        continue
-                    if min_price > 0 and price < min_price:
-                        continue
-                    if max_price > 0 and price > max_price:
-                        continue
-                    filtered.append(bounty)
-                algora_bounties = filtered
-
-            new_count = self.github_scout.store_issues(algora_bounties)
-
-            if self.github_scout.is_available():
-                bounty_queries = [
+            if wants_paid:
+                paid_label_qs = [
                     'label:"bounty" state:open',
-                    'label:"bug bounty" state:open',
                     'label:"reward" state:open',
+                    'label:"funded" state:open',
+                    'label:"sponsored" state:open',
+                    'label:"paid" state:open',
+                    'label:"prize" state:open',
+                    'label:"grant" state:open',
+                    '"bounty" "$" in:title state:open',
                 ]
-                gh_issues = []
-                per_query = max(1, limit // len(bounty_queries))
-                for q in bounty_queries:
-                    gh_issues.extend(self.github_scout.search_issues(query=q, limit=per_query))
-                    if len(gh_issues) >= limit:
-                        break
-                gh_issues = gh_issues[:limit]
+                for q in paid_label_qs:
+                    if q not in queries:
+                        queries.append(q)
 
-                if min_price > 0 or max_price > 0:
-                    filtered = []
-                    for issue in gh_issues:
-                        price = issue.get('price')
-                        if price is None:
-                            continue
-                        if min_price > 0 and price < min_price:
-                            continue
-                        if max_price > 0 and price > max_price:
-                            continue
-                        filtered.append(issue)
-                    gh_issues = filtered
+            per_query = max(2, limit // max(len(queries), 1)) if queries else limit
+            issues = []
+            for q in queries:
+                issues.extend(self.github_scout.search_issues(query=q, limit=per_query))
 
-                gh_count = self.github_scout.store_issues(gh_issues)
-                new_count += gh_count
+            if wants_paid:
+                before = len(issues)
+                def in_range(i):
+                    p = i.get('price')
+                    return p is not None and min_price <= p <= max_price
+                issues = [i for i in issues if in_range(i)]
+                if before != len(issues):
+                    logger.info("price filter $%s-$%s: filtered %d issues (kept %d)", min_price, max_price, before - len(issues), len(issues))
+            else:
+                issues = issues[:limit]
+                if config.get('test_mode.skip_paid', False):
+                    before = len(issues)
+                    issues = [i for i in issues if not i.get('is_bounty') and not i.get('price')]
+                    if before != len(issues):
+                        logger.info(f"skip_paid: filtered {before - len(issues)} paid issues (kept {len(issues)})")
+
+            new_count = self.github_scout.store_issues(issues)
+
+        if wants_paid:
+            try:
+                algo = self.algora_client.fetch_bounties(limit=limit)
+                filt = [b for b in algo if b.get('price') and min_price <= b['price'] <= max_price]
+                if filt:
+                    added = self.github_scout.store_issues(filt)
+                    if added:
+                        new_count += added
+                        logger.info(f"Algora: stored {added} new paid bounties")
+            except Exception as e:
+                logger.warning(f"Algora fetch failed: {e}")
 
         if min_price > 0 or max_price > 0:
             all_bounties = db.get_all_bounties()

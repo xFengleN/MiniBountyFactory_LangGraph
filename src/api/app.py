@@ -688,30 +688,16 @@ def serve_web_ui():
 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm text-gray-400 mb-1">Source</label>
-                        <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
-                            <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="radio" name="scanMode" value="test" id="scanModeTest" checked onchange="updateScanMode()" class="accent-purple-500">
-                                <span class="text-sm">Test Mode (GitHub + Algora)</span>
-                            </label>
-                            <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="radio" name="scanMode" value="prod" id="scanModeProd" onchange="updateScanMode()" class="accent-purple-500">
-                                <span class="text-sm">Prod Mode (Algora + GitHub)</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div id="priceRangeSection" class="hidden">
                         <label class="block text-sm text-gray-400 mb-1">Price Range ($)</label>
                         <div class="flex items-center space-x-2">
                             <input type="number" id="minPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
                             <span class="text-gray-400">to</span>
                             <input type="number" id="maxPrice" value="0" min="0" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 w-24 text-sm min-h-[44px]">
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">0 = no filter. Set a range to filter bounties by price.</p>
+                        <p class="text-xs text-gray-500 mt-1">Leave as 0–0 for free tasks. Set a range (e.g. 5–150) for paid bounties.</p>
                     </div>
 
-                    <div id="labelSelectorSection">
+                    <div>
                         <label class="block text-sm text-gray-400 mb-1">Labels to Search</label>
                         <div id="selectedLabels" class="flex flex-wrap gap-1 mb-2"></div>
                         <div id="labelDropdownContainer">
@@ -779,23 +765,8 @@ def serve_web_ui():
             function openScanModal() {
                 window._selectedLabels = [];
                 renderLabels();
-                updateScanMode();
                 document.getElementById('scanModal').classList.remove('hidden');
                 document.getElementById('scanModal').classList.add('flex');
-            }
-
-            function updateScanMode() {
-                const isTest = document.getElementById('scanModeTest').checked;
-                document.getElementById('priceRangeSection').classList.toggle('hidden', false);
-                document.getElementById('labelSelectorSection').classList.toggle('hidden', !isTest);
-                if (!isTest) {
-                    if (document.getElementById('minPrice').value === '0' || document.getElementById('minPrice').value === '') {
-                        document.getElementById('minPrice').value = '5';
-                    }
-                    if (document.getElementById('maxPrice').value === '0' || document.getElementById('maxPrice').value === '') {
-                        document.getElementById('maxPrice').value = '150';
-                    }
-                }
             }
 
             function addLabel() {
@@ -838,12 +809,10 @@ def serve_web_ui():
 
             async function executeScan() {
                 const btn = document.getElementById('executeScanBtn');
-                const testMode = document.getElementById('scanModeTest').checked;
                 const minPrice = parseInt(document.getElementById('minPrice').value) || 0;
                 const maxPrice = parseInt(document.getElementById('maxPrice').value) || 0;
                 const limit = parseInt(document.getElementById('maxTasks').value) || 10;
                 const labels = window._selectedLabels || [];
-
 
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Scanning...';
@@ -853,7 +822,7 @@ def serve_web_ui():
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
-                            test_mode: testMode,
+                            test_mode: true,
                             min_price: minPrice,
                             max_price: maxPrice,
                             limit: limit,
@@ -3275,14 +3244,12 @@ def scan_tasks():
         return jsonify({'error': 'Orchestrator not initialized'}), 500
 
     data = request.get_json() or {}
-    test_mode = data.get('test_mode', True)
     min_price = data.get('min_price', 0)
     max_price = data.get('max_price', 0)
     limit = data.get('limit', 10)
     labels = data.get('labels')
 
     result = orchestrator.manual_scan(
-        test_mode=test_mode,
         labels=labels,
         limit=limit,
         min_price=min_price,
