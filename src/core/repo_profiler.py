@@ -72,6 +72,78 @@ class RepoProfiler:
             return json.loads(existing['profile_data'])
         return self._default_profile()
 
+    def compute_ripeness(self, check: dict, profile: dict) -> dict:
+        created_str = check.get('issue_created_at')
+        score = 50
+        factors = []
+        hours = None
+
+        if created_str:
+            try:
+                created = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
+                now = datetime.now(timezone.utc)
+                hours = (now - created).total_seconds() / 3600
+            except Exception:
+                pass
+
+        if hours is not None:
+                if hours < 24:
+                    score -= 20
+                    factors.append('fresh_issue_under_24h')
+                elif hours > 168:
+                    score += 10
+                    factors.append('stale_over_7d')
+
+        claim_count = len(check.get('recent_claims', []))
+        if claim_count >= 5:
+            score -= 15
+            factors.append(f'high_competition_{claim_count}_claims')
+        elif claim_count >= 2:
+            score -= 5
+            factors.append(f'some_competition_{claim_count}_claims')
+        elif claim_count == 0:
+            score += 5
+            factors.append('no_competition')
+
+        if check.get('is_assigned'):
+            if hours is not None and hours > 120:
+                score += 15
+                factors.append('assigned_inactive_5d_plus')
+            else:
+                score -= 15
+                factors.append('recently_assigned')
+        else:
+            score += 10
+            factors.append('unassigned')
+
+        if check.get('algora_status') == 'locked':
+            score -= 20
+            factors.append('algora_locked_exclusive')
+
+        non_ci_prs = [p for p in check.get('active_prs', []) if not p.get('ci_passing')]
+        failed = len(non_ci_prs)
+        if failed >= 3 and (hours is None or hours > 72):
+            score += 20
+            factors.append(f'{failed}_failed_prs_opportunity')
+        elif failed >= 1:
+            score += 5
+            factors.append(f'{failed}_previous_attempts')
+
+        obs_count = profile.get('observation_count', 0)
+        if obs_count > 0:
+            avg_claims = profile.get('avg_claims', 0)
+            if claim_count > avg_claims * 1.5:
+                score -= 5
+                factors.append('above_repo_avg_competition')
+
+        clamped = max(0, min(100, score))
+        return {
+            'score': clamped,
+            'label': 'high' if clamped >= 65 else 'medium' if clamped >= 35 else 'low',
+            'factors': factors,
+            'confidence': 'high' if obs_count > 10 else 'medium' if obs_count > 3 else 'low',
+        }
+
     def _compute_compliance(self, algo_entries: list, attempt_users: list, assignees: list) -> dict:
         attempt_set = set(attempt_users)
         assign_set = set(assignees)

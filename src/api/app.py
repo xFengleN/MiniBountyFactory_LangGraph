@@ -425,6 +425,12 @@ def serve_web_ui():
                                 <div id="planAttemptAlgoraComment" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto"></div>
                             </details>
                         </div>
+                        <div id="planAttemptRipenessBox" class="mb-4 hidden">
+                            <details class="bg-gray-850 rounded border border-gray-700">
+                                <summary class="px-3 py-2 text-sm text-green-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-leaf mr-2"></i>Ripeness Score <span id="planAttemptRipenessSummary" class="text-xs text-gray-500 ml-2"></span></summary>
+                                <div id="planAttemptRipenessBody" class="text-xs text-gray-300 bg-gray-900 p-3 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto"></div>
+                            </details>
+                        </div>
                         <div id="planAttemptProfileBox" class="mb-4 hidden">
                             <details class="bg-gray-850 rounded border border-gray-700">
                                 <summary class="px-3 py-2 text-sm text-amber-400 cursor-pointer hover:bg-gray-750 rounded"><i class="fas fa-chart-bar mr-2"></i>Repo Behavioral Profile <span id="planAttemptProfileSummary" class="text-xs text-gray-500 ml-2"></span></summary>
@@ -2088,6 +2094,23 @@ def serve_web_ui():
                     algoraSummary.textContent = summaryParts.length > 0 ? '\u2014 ' + summaryParts.join(' | ') : '';
                 } else {
                     algoraBox.classList.add('hidden');
+                }
+                const ripenessBox = document.getElementById('planAttemptRipenessBox');
+                const ripenessBody = document.getElementById('planAttemptRipenessBody');
+                const ripenessSummary = document.getElementById('planAttemptRipenessSummary');
+                if (data.ripeness) {
+                    ripenessBox.classList.remove('hidden');
+                    var r = data.ripeness;
+                    var colorClass = r.score >= 65 ? 'text-green-400' : r.score >= 35 ? 'text-yellow-400' : 'text-red-400';
+                    ripenessSummary.innerHTML = '\u2014 <span class="' + colorClass + ' font-bold">' + r.score + ' (' + r.label + ')</span> \u2014 confidence: ' + r.confidence;
+                    var rlines = ['Score: ' + r.score + '/100 (' + r.label + ')', 'Confidence: ' + r.confidence];
+                    if (r.factors && r.factors.length > 0) {
+                        rlines.push('Factors:');
+                        r.factors.forEach(function(f) { rlines.push('  \u2022 ' + f.replace(/_/g, ' ')); });
+                    }
+                    ripenessBody.textContent = rlines.join('\\n');
+                } else {
+                    ripenessBox.classList.add('hidden');
                 }
                 const profileBox = document.getElementById('planAttemptProfileBox');
                 const profileBody = document.getElementById('planAttemptProfileBody');

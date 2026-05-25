@@ -59,6 +59,8 @@ class GitHubIssueChecker:
             'number': number,
             'is_assigned': False,
             'assignees': [],
+            'issue_created_at': None,
+            'issue_updated_at': None,
             'recent_claims': [],
             'has_contributing': False,
             'contributing_rules': '',
@@ -76,6 +78,9 @@ class GitHubIssueChecker:
             return result
 
         assignees = issue_data.get('assignees', [])
+        result['issue_created_at'] = issue_data.get('created_at')
+        result['issue_updated_at'] = issue_data.get('updated_at')
+
         if assignees:
             result['is_assigned'] = True
             result['assignees'] = [a.get('login', '') for a in assignees]

@@ -459,8 +459,10 @@ class BountyFactoryOrchestrator:
                 assignees=assignees,
             )
             precheck['repo_profile'] = repo_profiler.get_profile(owner, repo_name)
+            precheck['ripeness'] = repo_profiler.compute_ripeness(check, precheck['repo_profile'])
         else:
             precheck['repo_profile'] = repo_profiler._default_profile()
+            precheck['ripeness'] = repo_profiler.compute_ripeness(check, precheck['repo_profile'])
 
         logger.debug(f'Bounty {bounty_id}: Algora parser — wip={wip_count}, awards={award_count}, total=${award_total}')
         return precheck
