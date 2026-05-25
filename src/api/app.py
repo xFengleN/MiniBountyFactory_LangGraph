@@ -686,11 +686,11 @@ def serve_web_ui():
                         <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
                             <label class="flex items-center space-x-2 cursor-pointer">
                                 <input type="radio" name="scanMode" value="test" id="scanModeTest" checked onchange="updateScanMode()" class="accent-purple-500">
-                                <span class="text-sm">Free Tasks (GitHub)</span>
+                                <span class="text-sm">Test Mode (GitHub + Algora)</span>
                             </label>
                             <label class="flex items-center space-x-2 cursor-pointer">
                                 <input type="radio" name="scanMode" value="prod" id="scanModeProd" onchange="updateScanMode()" class="accent-purple-500">
-                                <span class="text-sm">Paid Bounties (Algora)</span>
+                                <span class="text-sm">Prod Mode (Algora + GitHub)</span>
                             </label>
                         </div>
                     </div>

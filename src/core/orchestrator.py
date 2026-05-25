@@ -637,5 +637,11 @@ class BountyFactoryOrchestrator:
                 gh_count = self.github_scout.store_issues(gh_issues)
                 count += gh_count
 
+            if min_price > 0 or max_price > 0:
+                all_bounties = db.get_all_bounties()
+                match_count = sum(1 for b in all_bounties if b.get('price') and min_price <= b['price'] <= max_price)
+                if match_count > count:
+                    count = match_count
+
         logger.info(f"Manual scan complete: found {count} tasks")
         return count
