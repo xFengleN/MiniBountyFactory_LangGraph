@@ -81,6 +81,9 @@ class TaskProcessor:
 
     def submit(self, bounty_id: int, process_fn):
         task_id = str(bounty_id)
+        # If this task was previously cancelled, clear stale cancel flag on resubmit.
+        # Otherwise worker loop can silently skip it and leave status stuck at queued.
+        self._cancelled.discard(task_id)
         self._status[task_id] = {
             'bounty_id': bounty_id,
             'status': 'queued',
