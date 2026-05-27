@@ -3578,6 +3578,7 @@ def retry_task(task_id):
     db.log_processing(task_id, 'system', 'retried', 'new', 'Task reset to new status for retry')
     
     task_id_str = str(task_id)
+    task_processor._cancelled.discard(task_id_str)
     if task_id_str in task_processor._status:
         del task_processor._status[task_id_str]
     if task_id_str in task_processor._logs:
@@ -3636,6 +3637,7 @@ def reset_task_api(task_id):
 
     # Clear in-memory status and logs
     task_id_str = str(task_id)
+    task_processor._cancelled.discard(task_id_str)
     if task_id_str in task_processor._status:
         del task_processor._status[task_id_str]
     if task_id_str in task_processor._logs:
