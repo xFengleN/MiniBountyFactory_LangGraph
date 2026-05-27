@@ -244,9 +244,13 @@ def coder_node(state: BountyState) -> dict:
 
     for subtask in sorted_subtasks:
         sub_branch = f"bounty-fix-{bounty_id}-sub-{subtask['id']}"
-        role = subtask.get('role', 'simple_coder')
-        logger.info(f"Coder: subtask {subtask['id']} ({role}) on branch {sub_branch}")
-        db.log_processing(bounty_id, "coder", f"subtask {subtask['id']} ({role})", "processing")
+        raw_role = subtask.get('role', 'simple_coder')
+        role = {
+            'repo_coder': 'simple_coder',
+            'coder': 'simple_coder',
+        }.get(raw_role, raw_role)
+        logger.info(f"Coder: subtask {subtask['id']} ({raw_role}->{role}) on branch {sub_branch}")
+        db.log_processing(bounty_id, "coder", f"subtask {subtask['id']} ({raw_role}->{role})", "processing")
 
         _run_git(str(workspace_path), ["checkout", branch_name])
         _run_git(str(workspace_path), ["checkout", "-b", sub_branch])
