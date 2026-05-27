@@ -2430,13 +2430,30 @@ def serve_web_ui():
                 }
             }
 
-            function proceedToProcess(taskId) {
+            async function proceedToProcess(taskId) {
                 const task = window.allTasks.find(t => t.id === taskId);
                 if (task) task.processing_status = 'processing';
                 applyFilters();
 
                 showProcessingModal(taskId);
-                fetch('/api/tasks/' + taskId + '/process', { method: 'POST' }).then(() => loadTasks());
+                try {
+                    const rawStatus = (task && task.processing_status) || 'new';
+                    const status = rawStatus === 'pending' ? 'new' : rawStatus;
+                    const useRetry = ['processing', 'queued', 'cancelled', 'failed', 'validation_failed', 'review_failed', 'error'].includes(status);
+                    const endpoint = useRetry ? '/api/tasks/' + taskId + '/retry' : '/api/tasks/' + taskId + '/process';
+
+                    const res = await fetch(endpoint, { method: 'POST' });
+                    let data = {};
+                    try { data = await res.json(); } catch (_) {}
+
+                    if (!res.ok || data.success === false) {
+                        customAlert(`Process failed (${res.status}): ` + (data.error || res.statusText || 'Request failed'));
+                    }
+                } catch (e) {
+                    customAlert('Process failed: ' + e.message);
+                } finally {
+                    loadTasks();
+                }
             }
 
             function hidePrecheckModal() {
@@ -2679,7 +2696,12 @@ def serve_web_ui():
                 if (!await customConfirm('Retry this task? It will be reset and processed again immediately.')) return;
                 try {
                     const res = await fetch('/api/tasks/' + id + '/retry', { method: 'POST' });
-                    const data = await res.json();
+                    let data = {};
+                    try { data = await res.json(); } catch (_) {}
+                    if (!res.ok) {
+                        customAlert(`Retry failed (${res.status}): ` + (data.error || res.statusText || 'Request failed'));
+                        return;
+                    }
                     if (data.success) {
                         loadTasks();
                         showProcessingModal(id);
