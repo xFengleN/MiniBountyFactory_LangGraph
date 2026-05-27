@@ -76,6 +76,9 @@ class TaskProcessor:
     def is_shutdown_requested(self) -> bool:
         return self._shutdown_event.is_set()
 
+    def is_running(self) -> bool:
+        return self._running
+
     def submit(self, bounty_id: int, process_fn):
         task_id = str(bounty_id)
         self._status[task_id] = {

@@ -500,6 +500,10 @@ class BountyFactoryOrchestrator:
         if not bounty:
             return {'success': False, 'error': 'Bounty not found'}
 
+        if not task_processor.is_running():
+            task_processor.start(max_concurrent=1)
+            logger.info("Task processor auto-started for manual processing")
+
         db.update_bounty_status(bounty_id, 'processing')
         db.log_processing(bounty_id, 'orchestrator', 'submitted', 'processing', 'Task queued for processing')
 
