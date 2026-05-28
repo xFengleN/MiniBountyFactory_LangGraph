@@ -40,8 +40,7 @@ class SimpleCoder:
 
     @property
     def model_name(self):
-        roles = config.agents.get('roles', {})
-        return roles.get('repo_coder') or roles.get('simple_coder', 'qwen2.5:0.5b')
+        return config.agents.get('roles', {}).get('simple_coder', 'qwen2.5:0.5b')
 
     def _ensure_llm(self):
         model = self.model_name

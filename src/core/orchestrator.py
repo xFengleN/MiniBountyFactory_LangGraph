@@ -12,6 +12,7 @@ from .graph import get_compiled_graph
 from .sandbox import kill_running_containers
 from ..agents.dispatcher import Dispatcher
 from ..agents.simple_coder import SimpleCoder
+from ..agents.super_coder import SuperCoder
 from ..agents.cicd_specialist import CicdSpecialist
 from ..agents.pr_creator import PRCreator
 from ..agents.github_scout import GitHubScout
@@ -32,6 +33,7 @@ class BountyFactoryOrchestrator:
         self.comment_generator = CommentGenerator()
         self.dispatcher = Dispatcher()
         self.simple_coder = SimpleCoder()
+        self.super_coder = SuperCoder()
         self.cicd_specialist = CicdSpecialist()
         self.pr_creator = PRCreator()
         self.repo_mapper = RepoMapper()
@@ -251,7 +253,8 @@ class BountyFactoryOrchestrator:
         return {
             'running': self.running,
             'dispatcher_available': self.dispatcher.is_available(),
-            'repo_coder_available': self.simple_coder.is_available(),
+            'simple_coder_available': self.simple_coder.is_available(),
+            'super_coder_available': self.super_coder.is_available(),
             'cicd_specialist_available': self.cicd_specialist.is_available(),
             'pr_creator_configured': self.pr_creator.is_configured(),
             'github_scout_available': self.github_scout.is_available(),

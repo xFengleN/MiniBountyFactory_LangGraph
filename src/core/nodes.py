@@ -8,6 +8,7 @@ from ..agents.dispatcher import Dispatcher
 from ..agents.github_checker import GitHubIssueChecker
 from ..agents.comment_generator import CommentGenerator
 from ..agents.simple_coder import SimpleCoder
+from ..agents.super_coder import SuperCoder
 from ..agents.cicd_specialist import CicdSpecialist
 from .config import config
 from .database import db
@@ -20,6 +21,7 @@ _dispatcher = Dispatcher()
 _github_checker = GitHubIssueChecker(config.git.get('token'))
 _comment_generator = CommentGenerator()
 _simple_coder = SimpleCoder()
+_super_coder = SuperCoder()
 _cicd_specialist = CicdSpecialist()
 
 
@@ -115,7 +117,7 @@ def dispatcher_node(state: BountyState) -> dict:
 
     dispatch_result = _dispatcher.dispatch(bounty)
     raw = dispatch_result.classification.lower()
-    if raw in ('simple', 'simple_coder', 'repo_coder', 'coder'):
+    if raw in ('simple', 'simple_coder'):
         classification = 'simple'
     elif raw in ('complex', 'complex_coder', 'complex_agent'):
         classification = 'complex'
@@ -170,23 +172,22 @@ def coder_node(state: BountyState) -> dict:
             "not just the test failures.]")
 
     if classification == "simple" or not subtasks:
-        db.log_processing(bounty_id, "coder", "repo_coder mode", "processing")
-        roles = config.agents.get('roles', {})
-        model = roles.get('repo_coder') or roles.get('simple_coder', 'qwen2.5:0.5b')
+        db.log_processing(bounty_id, "coder", "simple mode", "processing")
+        model = config.agents.get('roles', {}).get('simple_coder', 'qwen2.5:0.5b')
         result = run_sandbox_task(bounty, agent_type="simple", model=model)
 
         if result is None:
-            logger.info("Sandbox unavailable, falling back to local repo_coder")
+            logger.info("Sandbox unavailable, falling back to local simple coder")
             result = _simple_coder.process(bounty)
 
         if not result:
-            logger.warning(f"Repo coder returned no result for bounty {bounty_id}")
+            logger.warning(f"Simple coder returned no result for bounty {bounty_id}")
             db.log_processing(bounty_id, "coder", "no_result", "failed")
-            return {"error": "Repo coder failed to generate fix", "status": "failed"}
+            return {"error": "Simple coder failed to generate fix", "status": "failed"}
 
         if not result.get("success", True):
             error = result.get("error", "Unknown error")
-            logger.warning(f"Repo coder failed for bounty {bounty_id}: {error}")
+            logger.warning(f"Simple coder failed for bounty {bounty_id}: {error}")
             db.log_processing(bounty_id, "coder", f"failed: {error}", "failed")
             return {"error": error, "status": "failed"}
 
@@ -195,7 +196,7 @@ def coder_node(state: BountyState) -> dict:
         db.log_processing(bounty_id, "coder", "fix generated", "processing")
 
         return {
-            "agent_type": "repo_coder",
+            "agent_type": "simple_coder",
             "repo_path": result.get("repo_path", ""),
             "branch_name": result.get("branch_name", ""),
             "commit_sha": result.get("commit_sha", ""),
@@ -246,14 +247,14 @@ def coder_node(state: BountyState) -> dict:
         raw_role = subtask.get('role', 'simple_coder')
         normalized_role = str(raw_role or 'simple_coder').strip().lower()
         role = {
-            'repo_coder': 'repo_coder',
-            'coder': 'repo_coder',
-            'simple_coder': 'repo_coder',
-            'super_coder': 'repo_coder',
+            'repo_coder': 'simple_coder',
+            'coder': 'simple_coder',
+            'simple_coder': 'simple_coder',
+            'super_coder': 'super_coder',
         }.get(normalized_role)
         if not role:
-            logger.warning(f"Unknown subtask role '{raw_role}', defaulting to repo_coder")
-            role = 'repo_coder'
+            logger.warning(f"Unknown subtask role '{raw_role}', defaulting to simple_coder")
+            role = 'simple_coder'
 
         logger.info(f"Coder: subtask {subtask['id']} ({raw_role}->{role}) on branch {sub_branch}")
         db.log_processing(bounty_id, "coder", f"subtask {subtask['id']} ({raw_role}->{role})", "processing")
@@ -261,12 +262,28 @@ def coder_node(state: BountyState) -> dict:
         _run_git(str(workspace_path), ["checkout", branch_name])
         _run_git(str(workspace_path), ["checkout", "-b", sub_branch])
 
-        result = _simple_coder.process(
-            bounty,
-            subtask_description=subtask.get('description', ''),
-            repo_path=str(workspace_path),
-            subtask_branch=sub_branch,
-        )
+        if role == 'simple_coder':
+            result = _simple_coder.process(
+                bounty,
+                subtask_description=subtask.get('description', ''),
+                repo_path=str(workspace_path),
+                subtask_branch=sub_branch,
+            )
+        elif role == 'super_coder':
+            result = _super_coder.process(
+                bounty,
+                [subtask],
+                repo_path=str(workspace_path),
+                subtask_branch=sub_branch,
+            )
+        else:
+            logger.warning(f"Unknown subtask role after normalization: {role}, defaulting to simple_coder")
+            result = _simple_coder.process(
+                bounty,
+                subtask_description=subtask.get('description', ''),
+                repo_path=str(workspace_path),
+                subtask_branch=sub_branch,
+            )
 
         if result:
             all_files.extend(result.get('files_changed', []))

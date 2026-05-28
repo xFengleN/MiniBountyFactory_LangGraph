@@ -502,8 +502,7 @@ def run_sandbox_task(
     workspace_base = config.get("workspace.base_path")
     sandbox_dir = Path(workspace_base) / f"bounty_{bounty_id}"
 
-    roles = config.agents.get('roles', {})
-    model = model or roles.get('repo_coder') or roles.get('simple_coder', "qwen2.5:0.5b")
+    model = model or config.agents.get('roles', {}).get('simple_coder', "qwen2.5:0.5b")
 
     # Step 1: Clone on host (always fresh — no skip-clone to avoid dirty workspace on retry)
     if sandbox_dir.exists():

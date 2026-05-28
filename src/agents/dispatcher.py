@@ -28,7 +28,7 @@ class DispatchOutput(BaseModel):
 
 
 class Dispatcher:
-    ROLES = ['repo_coder']
+    ROLES = ['simple_coder', 'super_coder']
 
     def __init__(self):
         self._llm = None
@@ -63,7 +63,7 @@ class Dispatcher:
 
         template = load_prompt('dispatcher')
         if template is None:
-            template = "You are a dispatcher. Analyze the task and decide how to route it.\n\nGuidelines:\n1. Determine if the task is SIMPLE or COMPLEX\n2. SIMPLE tasks: one-off file changes, boilerplate, bug fixes, dependency updates, config changes. Set mode=\"delegate\".\n3. COMPLEX tasks: multi-file architecture, cross-cutting concerns, new features, algorithmic work. Set mode=\"decompose\".\n4. For COMPLEX tasks, break into subtasks assigned to 'repo_coder' only.\n5. Each subtask should be independently solvable. Identify dependencies.\n\nTask:\nTitle: {title}\nDescription: {description}\nRepository: {repo_url}\n\nOutput your decision."
+            template = "You are a dispatcher. Analyze the task and decide how to route it.\n\nGuidelines:\n1. Determine if the task is SIMPLE or COMPLEX\n2. SIMPLE tasks: one-off file changes, boilerplate, bug fixes, dependency updates, config changes. Set mode=\"delegate\".\n3. COMPLEX tasks: multi-file architecture, cross-cutting concerns, new features, algorithmic work. Set mode=\"decompose\".\n4. For COMPLEX tasks, break into subtasks assigned to 'simple_coder' or 'super_coder':\n   - simple_coder: focused file edits, unit tests, refactoring, scripts\n   - super_coder: architectural changes, multi-file coordination, complex algorithms, performance work\n5. Each subtask should be independently solvable. Identify dependencies.\n\nTask:\nTitle: {title}\nDescription: {description}\nRepository: {repo_url}\n\nOutput your decision."
 
         desc_short = (description or '')[:2000]
         prompt = template.format(title=title, description=desc_short, repo_url=repo_url)

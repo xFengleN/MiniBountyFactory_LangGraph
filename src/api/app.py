@@ -545,8 +545,12 @@ def serve_web_ui():
                                         <select id="cfgRoleDispatcher" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
                                     </div>
                                     <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Repo Coder <span class="text-gray-500">(single coding agent)</span></label>
-                                        <select id="cfgRoleRepo" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                        <label class="block text-xs text-gray-400 mb-1">Simple Coder <span class="text-gray-500">(was simple + junior)</span></label>
+                                        <select id="cfgRoleSimple" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Super Coder <span class="text-gray-500">(unchanged)</span></label>
+                                        <select id="cfgRoleSuper" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-mono"></select>
                                     </div>
                                     <div>
                                         <label class="block text-xs text-gray-400 mb-1">CI/CD Specialist <span class="text-gray-500">(test + review)</span></label>
@@ -1408,7 +1412,7 @@ def serve_web_ui():
                     const modelsData = await modelsRes.json();
 
                     const allModels = [...(modelsData.ollama || []), ...(modelsData.opencode || [])];
-                    const roleIds = ['cfgRoleDispatcher', 'cfgRoleRepo', 'cfgRoleCicd'];
+                    const roleIds = ['cfgRoleDispatcher', 'cfgRoleSimple', 'cfgRoleSuper', 'cfgRoleCicd'];
                     roleIds.forEach(id => {
                         const sel = document.getElementById(id);
                         sel.innerHTML = '<option value="">— Select —</option>';
@@ -1425,7 +1429,8 @@ def serve_web_ui():
 
                     const roles = cfg.agents?.roles || {};
                     document.getElementById('cfgRoleDispatcher').value = roles.dispatcher || '';
-                    document.getElementById('cfgRoleRepo').value = roles.repo_coder || roles.simple_coder || '';
+                    document.getElementById('cfgRoleSimple').value = roles.simple_coder || '';
+                    document.getElementById('cfgRoleSuper').value = roles.super_coder || '';
                     document.getElementById('cfgRoleCicd').value = roles.cicd_specialist || '';
 
                     document.getElementById('cfgMaxLocalCycles').value = cfg.agents?.max_local_fix_cycles ?? 3;
@@ -1459,7 +1464,8 @@ def serve_web_ui():
                     agents: {
                         roles: {
                             dispatcher: document.getElementById('cfgRoleDispatcher').value,
-                            repo_coder: document.getElementById('cfgRoleRepo').value,
+                            simple_coder: document.getElementById('cfgRoleSimple').value,
+                            super_coder: document.getElementById('cfgRoleSuper').value,
                             cicd_specialist: document.getElementById('cfgRoleCicd').value,
                         },
                         max_local_fix_cycles: parseInt(document.getElementById('cfgMaxLocalCycles').value) || 3,
