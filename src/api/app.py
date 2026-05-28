@@ -3831,16 +3831,8 @@ def run_server(port: int = 5000, debug: bool = False):
     import sys as _sys
     import os as _os
     import signal as _signal
-    import subprocess as _sp
     from ..core.task_processor import task_processor
     _startup_time = time.time()
-    _code_dir = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-    _git_sha = "unknown"
-    try:
-        _git_sha = _sp.check_output(['git', 'rev-parse', '--short', 'HEAD'], cwd=_code_dir, text=True).strip()
-    except Exception:
-        pass
-    logger.info(f"Startup fingerprint: code_dir={_code_dir} git_sha={_git_sha} pid={_os.getpid()}")
     orchestrator = BountyFactoryOrchestrator()
     task_processor.start()
 

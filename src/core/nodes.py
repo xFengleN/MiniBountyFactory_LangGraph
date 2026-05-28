@@ -236,7 +236,6 @@ def coder_node(state: BountyState) -> dict:
 
     subtask_branches = []
     all_files = []
-    subtask_failures = []
     total_prompt = 0
     total_completion = 0
     total_duration = 0.0
@@ -262,17 +261,12 @@ def coder_node(state: BountyState) -> dict:
         _run_git(str(workspace_path), ["checkout", branch_name])
         _run_git(str(workspace_path), ["checkout", "-b", sub_branch])
 
-        failure_reason = ""
-        try:
-            result = _simple_coder.process(
-                bounty,
-                subtask_description=subtask.get('description', ''),
-                repo_path=str(workspace_path),
-                subtask_branch=sub_branch,
-            )
-        except Exception as e:
-            result = None
-            failure_reason = f"exception: {e}"
+        result = _simple_coder.process(
+            bounty,
+            subtask_description=subtask.get('description', ''),
+            repo_path=str(workspace_path),
+            subtask_branch=sub_branch,
+        )
 
         if result:
             all_files.extend(result.get('files_changed', []))
@@ -285,11 +279,7 @@ def coder_node(state: BountyState) -> dict:
                 model_used = result['model_used']
             logger.info(f"Coder: subtask {subtask['id']} completed")
         else:
-            if not failure_reason:
-                failure_reason = "no result from repo_coder"
-            logger.warning(f"Coder: subtask {subtask['id']} failed ({failure_reason}), dropping branch")
-            subtask_failures.append(f"subtask {subtask['id']}: {failure_reason}")
-            db.log_processing(bounty_id, "coder", f"subtask {subtask['id']} failed: {failure_reason}", "warning")
+            logger.warning(f"Coder: subtask {subtask['id']} failed, dropping branch")
             _run_git(str(workspace_path), ["checkout", branch_name])
             _run_git(str(workspace_path), ["branch", "-D", sub_branch])
 
@@ -297,9 +287,8 @@ def coder_node(state: BountyState) -> dict:
 
     if not all_files:
         logger.warning(f"No fix generated for complex bounty {bounty_id}")
-        detail = "; ".join(subtask_failures[:6]) if subtask_failures else "all subtasks returned no result"
-        db.log_processing(bounty_id, "coder", f"no_result: {detail}", "failed")
-        return {"error": f"No subtask produced a fix ({detail})", "status": "failed"}
+        db.log_processing(bounty_id, "coder", "no_result", "failed")
+        return {"error": "No subtask produced a fix", "status": "failed"}
 
     # Build combined diff across all subtask branches
     combined_diff_parts = []
