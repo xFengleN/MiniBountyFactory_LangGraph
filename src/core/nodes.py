@@ -245,17 +245,10 @@ def coder_node(state: BountyState) -> dict:
     for subtask in sorted_subtasks:
         sub_branch = f"bounty-fix-{bounty_id}-sub-{subtask['id']}"
         raw_role = subtask.get('role', 'simple_coder')
-        normalized_role = str(raw_role or 'simple_coder').strip().lower()
         role = {
             'repo_coder': 'simple_coder',
             'coder': 'simple_coder',
-            'simple_coder': 'simple_coder',
-            'super_coder': 'super_coder',
-        }.get(normalized_role)
-        if not role:
-            logger.warning(f"Unknown subtask role '{raw_role}', defaulting to simple_coder")
-            role = 'simple_coder'
-
+        }.get(raw_role, raw_role)
         logger.info(f"Coder: subtask {subtask['id']} ({raw_role}->{role}) on branch {sub_branch}")
         db.log_processing(bounty_id, "coder", f"subtask {subtask['id']} ({raw_role}->{role})", "processing")
 
@@ -277,13 +270,10 @@ def coder_node(state: BountyState) -> dict:
                 subtask_branch=sub_branch,
             )
         else:
-            logger.warning(f"Unknown subtask role after normalization: {role}, defaulting to simple_coder")
-            result = _simple_coder.process(
-                bounty,
-                subtask_description=subtask.get('description', ''),
-                repo_path=str(workspace_path),
-                subtask_branch=sub_branch,
-            )
+            logger.warning(f"Unknown subtask role: {role}, dropping branch")
+            _run_git(str(workspace_path), ["checkout", branch_name])
+            _run_git(str(workspace_path), ["branch", "-D", sub_branch])
+            continue
 
         if result:
             all_files.extend(result.get('files_changed', []))
